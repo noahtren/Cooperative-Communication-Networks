@@ -1,2 +1,5 @@
 tensorflow
 graphviz
+
+# conda:
+graphviz

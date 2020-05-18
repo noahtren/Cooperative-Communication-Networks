@@ -61,15 +61,15 @@ class TensorGraph:
   `adj` is a matrix of shape [N, N] where the i, j index is 1 if i has a
   directed edge to j, otherwise it is 0.
 
-  `nodes` and `order` are both matrices, `nodes` with shape [N, nf] and `order`
-  with shape [N, of], where nf is the number of label node features and of is
-  the number of possible child indices that a node could have.
+  `node_features` is a dictionary of named node features, each of shape [n, ?]
+  where n is the maximum number of nodes and ? is the encoded feature space of
+  that feature.
 
-  `num` is an integer that is less than or equal to N. It is the number of
+  `num_nodes` is an integer that is less than or equal to N. It is the number of
   nodes that are actually in the graph.
   """
   def __init__(self, adj:tf.Tensor, node_features:Dict[str, tf.Tensor],
-               num_nodes:int, language_spec:str):
+               num_nodes:int, attrs:dict, language_spec:str):
     N = adj.shape[0]
     assert adj.shape[0] == adj.shape[1]
     for nf_name, node_feature in node_features.items():
@@ -77,28 +77,77 @@ class TensorGraph:
     self.adj = adj
     self.node_features = node_features
     self.num_nodes = num_nodes
+    self.attrs = attrs
     self.language_spec = language_spec
 
 
   def visualize(self, name='unnamed', view=True):
-    def node_feature_to_symbol(node_feature):
-      pass
     dot = Digraph(name=name)
 
     # nodes
-    for n_i in self.num:
-      dot.node(str(n_i))
+    node_names = []
+    for n_i in range(self.num_nodes):
+      ord_ = np.argmax(self.node_features['order'][n_i]) - 1
+      node_name = f"{self.attrs['value_tokens_list'][n_i]} ord={ord_}, i={n_i}"
+      dot.node(node_name)
+      node_names.append(node_name)
 
     # edges
-    for n_i in self.num:
-      dot.edge()
+    for n_i in range(self.num_nodes):
+      src_name = node_names[n_i]
+      for a_i, adj_bool in enumerate(self.adj[n_i]):
+        if adj_bool:
+          targ_name = node_names[a_i]
+          dot.edge(src_name, targ_name)
 
     os.makedirs('gviz', exist_ok=True)
-    dot.render(os.path.join('gviz', f'{name}.png'), view=view)
+    dot.render(os.path.join('gviz', f'{name}'), format='pdf', view=view)
 
 
   @classmethod
-  def random_tree(self, language_spec:str, min_num_values:int,
+  def tree_to_instance(cls, adj_list:list, values_list:list, order_list:list,
+                       value_tokens_list:list, max_nodes:int, language_spec:str):
+    """Convert Python data types to a TensorGraph instance with max_nodes, using
+    padding where necessary. If the Python data has too many nodes (more than
+    `max_nodes`), then this function returns none.
+    """
+    if len(adj_list) > max_nodes:
+      return None
+
+    pad_amt = max_nodes - len(adj_list)
+    # values and order lists are already in correct numpy format. they just need
+    # to be padded. padding only needs to occur along the first axis
+    values = np.stack(values_list)
+    order = np.stack(order_list)
+    values = np.pad(values, [[0, pad_amt], [0, 0]])
+    order = np.pad(order, [[0, pad_amt], [0, 0]])
+
+    adj_arrs = []
+    for adj_indices in adj_list:
+      adj_arr = np.zeros((len(adj_list)), dtype=np.int32)
+      for n_i in adj_indices:
+        adj_arr[n_i] = 1
+      adj_arrs.append(adj_arr)
+    
+    adj = np.stack(adj_arrs)
+    adj = np.pad(adj, [[0, pad_amt], [0, pad_amt]])
+    print(adj)
+
+    return TensorGraph(adj,
+      node_features={
+        'values': values,
+        'order': order
+      },
+      num_nodes=len(adj_list),
+      attrs={
+        'value_tokens_list': value_tokens_list
+      },
+      language_spec=language_spec
+    )
+
+
+  @classmethod
+  def random_tree(cls, language_spec:str, min_num_values:int,
                   max_num_values:int):
     """Generate a random, valid tree based on a language spec. Trees are
     generated as NumPy arrays and can be converted to TensorFlow tensors later.
@@ -172,17 +221,20 @@ class TensorGraph:
       order_list.append(p_order)
 
       # update stack
-      print(f'tree_stack: {tree_stack}')
-      print(f'children: {children}')
       for child_i in children:
         tree_stack.remove(child_i)
       tree_stack.append(next_idx)
       next_idx += 1
     
     # set root node order to unordered
-    order_list[-1][0] = 1    
-    print(value_tokens_list)
+    order_list[-1][0] = 1
+    return adj_list, values_list, value_tokens_list, order_list
+
 
 if __name__ == "__main__":
   for _ in range(10000):
-    TensorGraph.random_tree('arithmetic', 3, 5)
+    adj_list, values_list, value_tokens_list, order_list = TensorGraph.random_tree('arithmetic', 3, 5)
+    tg = TensorGraph.tree_to_instance(adj_list, values_list, order_list, value_tokens_list, 6, 'arithmetic')
+    if tg is not None:
+      tg.visualize()
+      code.interact(local={**locals(), **globals()})
