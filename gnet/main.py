@@ -26,6 +26,14 @@ def get_dataset(language_spec='arithmetic', min_num_values=3, max_num_values=3,
   adj, node_features, node_feature_specs = TensorGraph.instances_to_tensors(instances)
   return adj, node_features, node_feature_specs
 
+
+def get_encoder():
+  pass
+
+def get_decoder():
+  pass
+
+
 if __name__ == "__main__":
   adj, node_features, node_feature_specs = get_dataset(vis_first=True)
 
