@@ -1,4 +1,4 @@
-Example: ![./viz/addition.pdf]
+Example: ![addition.pdf](/viz/addition.pdf)
 
 <object data="/viz/addition.pdf" type="application/pdf" width="400px" height="400px">
   <embed src="/viz/addition.pdf">
