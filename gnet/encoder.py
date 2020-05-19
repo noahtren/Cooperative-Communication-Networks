@@ -5,30 +5,61 @@ where each node is treated as a token.
 """
 
 import code
+from typing import Dict
 
 import tensorflow as tf
 
 
-class GraphFeatureEmbed(tf.keras.layers.Layer):
-  """Aggregate and embed node features
+class NodeFeatureEmbed(tf.keras.layers.Layer):
+  """Aggregate and embed node features before doing global attention between
+  nodes.
   """
-  def __init__(self, hidden_size:int, num_feature_types:int):
-    self.ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_feature_types)]
+  def __init__(self, hidden_size:int, node_feature_specs:Dict[str, int]):
+    self.nf_w = {name: tf.keras.layers.Dense(hidden_size) for name in
+      node_feature_specs.keys()}
+    self.w_out = tf.keras.layers.Dense(hidden_size)
 
 
-  def call(self):
-    raise NotImplementedError
+  def call(self, inputs):
+    nf = inputs['node_features']
+
+    feature_reps = []
+    for name, layer in self.nf_w.items():
+      nf_rep = layer(nf['name'])
+      nf_rep = tf.nn.swish(nf_rep)
+      feature_reps.append(nf_rep)
+    
+    feature_reps = tf.concat(feature_reps, axis=-1)
+    x = self.w_out(feature_reps)
+    x = tf.nn.swish(x)
+    return x
 
 
 class GlobalAttention(tf.keras.layers.Layer):
   def __init__(self, num_heads:int, hidden_size:int):
+    """Multi-head global self-attention based generally on the original
+    Transformer paper.
+
+    ---
+    Attention Is All You Need by Vaswani et al.
+    https://arxiv.org/abs/1706.03762
+    ---
+
+    This layer incorporates a multi-head self-attention module as well as
+    a feed-forward layer with the swish activation function.
+
+    Args:
+      num_heads
+      hidden_size
+    """
     super(GlobalAttention, self).__init__()
     self.num_heads = num_heads
     self.hidden_size = hidden_size
-    self.v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
     self.q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.w_out = tf.keras.layers.Dense(hidden_size)
+    self.k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.w_out_1 = tf.keras.layers.Dense(hidden_size)
+    self.w_out_2 = tf.keras.layers.Dense(hidden_size)
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
   
 
@@ -39,15 +70,18 @@ class GlobalAttention(tf.keras.layers.Layer):
       num_nodes: a tensor of shape [batch_size] stating the number of nodes per
         input graph
     """
+    # TODO: do I need to add layer normalization?
+    # TODO: may need to apply masking to bottom rows as they are used in dot-product,
+    # but they shouldn't be. it seems like the only way to fix this is
+    # by masking right *before* the dot product, and then again before softmaxing.
+
     x = inputs['x']
     num_nodes = inputs['num_nodes']
 
-    # TODO: where to apply activations and batch normalization?
-
     # linear transformation of input embeddings
-    Vs = [v_w(x) for v_w in self.v_ws]
-    Ks = [k_w(x) for k_w in self.k_ws]
     Qs = [q_w(x) for q_w in self.q_ws]
+    Ks = [k_w(x) for k_w in self.k_ws]
+    Vs = [v_w(x) for v_w in self.v_ws]
 
     # find alignment per attention head
     Es = [tf.matmul(q, k, transpose_b=True) for q, k in zip(Qs, Ks)]
@@ -70,6 +104,7 @@ class GlobalAttention(tf.keras.layers.Layer):
     contexts = tf.concat(contexts, axis=-1)
 
     # produce new features from full context
-    x = self.w_out(contexts)
+    x = self.w_out_1(contexts)
+    x = tf.nn.swish(x)
+    x = self.w_out_2(x)
     return x
-
