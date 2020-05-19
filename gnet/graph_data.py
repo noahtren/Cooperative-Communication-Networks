@@ -105,8 +105,8 @@ class TensorGraph:
 
 
   @classmethod
-  def tree_to_instance(cls, adj_list:list, values_list:list, order_list:list,
-                       value_tokens_list:list, max_nodes:int, language_spec:str):
+  def tree_to_instance(cls, adj_list:list, values_list:list, value_tokens_list:list,
+                       order_list:list, max_nodes:int, language_spec:str):
     """Convert Python data types to a TensorGraph instance with max_nodes, using
     padding where necessary. If the Python data has too many nodes (more than
     `max_nodes`), then this function returns none.
@@ -161,9 +161,9 @@ class TensorGraph:
     order_list = []
 
     NUM_VALUE_TOKENS = len(SPEC['value_tokens'])
-    NUM_NODE_VALUES = len(SPEC['node_types']) + NUM_VALUE_TOKENS
-    NUM_ORDER_INDICES = 1 + SPEC['max_children']
     NON_VALUE_NODE_TYPES = [nt for nt in SPEC['node_types'] if not nt.is_value]
+    NUM_NODE_VALUES = len(NON_VALUE_NODE_TYPES) + NUM_VALUE_TOKENS
+    NUM_ORDER_INDICES = 1 + SPEC['max_children']
 
     # make initial values
     num_values = random.randint(min_num_values, max_num_values)
@@ -231,10 +231,38 @@ class TensorGraph:
     return adj_list, values_list, value_tokens_list, order_list
 
 
+  @classmethod
+  def instances_to_tensors(cls, tensor_graphs:list):
+    """Given a list of instances of this class, turn it into a training dataset
+    stored in memory.
+
+    Returns:
+      batched adj tensor
+      batched dictionary of node feature tensors
+      node_feature_specs dictionary, mapping node feature names to dimensionality
+    """
+    adj = []
+    node_features = {}
+    node_feature_specs = {}
+    for tg in tensor_graphs:
+      adj.append(tg.adj)
+      for name, tensor in tg.node_features.items():
+        if name not in node_feature_specs:
+          node_features[name] = [tensor]
+          node_feature_specs[name] = tensor.shape[-1]
+        else:
+          node_features[name].append(tensor)
+    # stack along batch axis
+    adj = tf.stack(adj, axis=0)
+    node_features = {name: tf.stack(nf_list, axis=0) for name, nf_list in
+      node_features.items()}
+    return adj, node_features, node_feature_specs
+
+
 if __name__ == "__main__":
   for _ in range(10000):
     adj_list, values_list, value_tokens_list, order_list = TensorGraph.random_tree('arithmetic', 3, 5)
-    tg = TensorGraph.tree_to_instance(adj_list, values_list, order_list, value_tokens_list, 6, 'arithmetic')
+    tg = TensorGraph.tree_to_instance(adj_list, values_list, value_tokens_list, order_list, 6, 'arithmetic')
     if tg is not None:
       tg.visualize()
       code.interact(local={**locals(), **globals()})

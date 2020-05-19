@@ -1,0 +1,11 @@
+digraph unnamed {
+	"d ord=0, i=0"
+	"c ord=0, i=1"
+	"b ord=1, i=2"
+	"- ord=1, i=3"
+	"- ord=-1, i=4"
+	"- ord=1, i=3" -> "c ord=0, i=1"
+	"- ord=1, i=3" -> "b ord=1, i=2"
+	"- ord=-1, i=4" -> "d ord=0, i=0"
+	"- ord=-1, i=4" -> "- ord=1, i=3"
+}
