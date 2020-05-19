@@ -1,5 +1,7 @@
 tensorflow
 graphviz
+matplotlib
+tqdm
 
 # conda:
 graphviz

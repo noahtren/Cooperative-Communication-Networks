@@ -15,6 +15,7 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
   nodes.
   """
   def __init__(self, hidden_size:int, node_feature_specs:Dict[str, int]):
+    super(NodeFeatureEmbed, self).__init__()
     self.nf_w = {name: tf.keras.layers.Dense(hidden_size) for name in
       node_feature_specs.keys()}
     self.w_out = tf.keras.layers.Dense(hidden_size)
@@ -25,7 +26,7 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
 
     feature_reps = []
     for name, layer in self.nf_w.items():
-      nf_rep = layer(nf['name'])
+      nf_rep = layer(nf[name])
       nf_rep = tf.nn.swish(nf_rep)
       feature_reps.append(nf_rep)
     
@@ -107,4 +108,21 @@ class GlobalAttention(tf.keras.layers.Layer):
     x = self.w_out_1(contexts)
     x = tf.nn.swish(x)
     x = self.w_out_2(x)
+    return x
+
+
+class Encoder(tf.keras.Model):
+  def __init__(self, max_nodes:int, node_feature_specs:Dict[str, int],
+               hidden_size:int, attention_layers:int, num_heads:int, **kwargs):
+    super(Encoder, self).__init__()
+    self.embed = NodeFeatureEmbed(hidden_size, node_feature_specs)
+    self.global_attns = [GlobalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
+
+
+  def call(self, inputs):
+    node_features = inputs['node_features']
+    num_nodes = inputs['num_nodes']
+    x = self.embed({'node_features': node_features})
+    for attn_layer in self.global_attns:
+      x = attn_layer({'x': x, 'num_nodes': num_nodes})
     return x

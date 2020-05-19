@@ -8,7 +8,7 @@ import tensorflow as tf
 
 class GraphDecoder(tf.keras.layers.Layer):
   def __init__(self, hidden_size:int, max_nodes:int,
-               node_feature_specs:Dict[str, int]):
+               node_feature_specs:Dict[str, int], **kwargs):
     """Simple graph reconstruction with dense feed-forward neural network based
     generally on the GraphVAE paper.
 

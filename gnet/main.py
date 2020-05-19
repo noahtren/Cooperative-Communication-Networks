@@ -2,8 +2,9 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from graph_data import TensorGraph
-from encoder import NodeFeatureEmbed, GlobalAttention
+from encoder import Encoder 
 from decoder import GraphDecoder
+from cfg import CFG
 
 def get_dataset(language_spec='arithmetic', min_num_values=3, max_num_values=3,
                 max_nodes=5, num_samples=1_000, vis_first=False):
@@ -27,14 +28,9 @@ def get_dataset(language_spec='arithmetic', min_num_values=3, max_num_values=3,
   return adj, node_features, node_feature_specs
 
 
-def get_encoder():
-  pass
-
-def get_decoder():
-  pass
-
-
 if __name__ == "__main__":
   adj, node_features, node_feature_specs = get_dataset(vis_first=True)
-
+  CFG['node_feature_specs'] = node_feature_specs
+  encoder = Encoder(**CFG)
+  decoder = GraphDecoder(**CFG)
 
