@@ -49,8 +49,6 @@ class GlobalAttention(tf.keras.layers.Layer):
     Ks = [k_w(x) for k_w in self.k_ws]
     Qs = [q_w(x) for q_w in self.q_ws]
 
-    code.interact(local={**locals(), **globals()})
-
     # find alignment per attention head
     Es = [tf.matmul(q, k, transpose_b=True) for q, k in zip(Qs, Ks)]
     Es = [self.scale * e for e in Es]
@@ -75,12 +73,3 @@ class GlobalAttention(tf.keras.layers.Layer):
     x = self.w_out(contexts)
     return x
 
-
-if __name__ == "__main__":
-  x = tf.random.normal((2, 7, 512))
-  num_nodes = tf.convert_to_tensor([4, 6])
-  global_attn = GlobalAttention(num_heads=5, hidden_size=512)
-  y = global_attn(inputs={
-    'x': x,
-    'num_nodes': num_nodes
-  })

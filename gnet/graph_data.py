@@ -131,7 +131,6 @@ class TensorGraph:
     
     adj = np.stack(adj_arrs)
     adj = np.pad(adj, [[0, pad_amt], [0, pad_amt]])
-    print(adj)
 
     return TensorGraph(adj,
       node_features={
@@ -198,7 +197,8 @@ class TensorGraph:
         if child_token not in new_node_type.parent_blacklist:
           valid_children.append(child_i)
         else:
-          print(f'IGNORE INDEX {child_i}')
+          pass
+          # print(f'IGNORE INDEX {child_i}')
 
       children = random.sample(tree_stack, k=child_select_num)
       
