@@ -6,6 +6,7 @@ from tqdm import tqdm
 from graph_data import TensorGraph
 from encoder import Encoder 
 from decoder import GraphDecoder
+from graph_match import minimum_loss_permutation
 from cfg import CFG
 
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
@@ -34,8 +35,13 @@ def train_step(models, batch):
   with tf.GradientTape(persistent=True) as tape:
     x = models['encoder'][0](batch)
     adj_pred, nf_pred = models['decoder'][0]({'x': x})
-    code.interact(local={**locals(), **globals()})
-
+    loss = minimum_loss_permutation(
+      batch['adj'],
+      batch['node_features'],
+      adj_pred,
+      nf_pred
+    )
+  # TODO: optimizer steps using gradient tape
 
 if __name__ == "__main__":
   # ==================== DATA AND MODELS ====================
