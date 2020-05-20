@@ -9,6 +9,7 @@ from decoder import GraphDecoder
 from graph_match import minimum_loss_permutation
 from cfg import CFG
 
+
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, **kwargs):
   instances = []
@@ -34,14 +35,18 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
 def train_step(models, batch):
   with tf.GradientTape(persistent=True) as tape:
     x = models['encoder'][0](batch)
-    adj_pred, nf_pred = models['decoder'][0]({'x': x})
-    loss = minimum_loss_permutation(
+    adj_pred, nf_pred = models['decoder'][0](x)
+    batch_loss = minimum_loss_permutation(
       batch['adj'],
       batch['node_features'],
       adj_pred,
       nf_pred
     )
-  # TODO: optimizer steps using gradient tape
+  for module, optim in models.values():
+    grads = tape.gradient(batch_loss, module.trainable_variables)
+    optim.apply_gradients(zip(grads, module.trainable_variables))
+  return batch_loss
+
 
 if __name__ == "__main__":
   # ==================== DATA AND MODELS ====================
@@ -50,13 +55,14 @@ if __name__ == "__main__":
   encoder = Encoder(**CFG)
   decoder = GraphDecoder(**CFG)
   models = {
-    'encoder': [encoder, tf.keras.optimizers.Adam()],
-    'decoder': [decoder, tf.keras.optimizers.Adam()],
+    'encoder': [encoder, tf.keras.optimizers.Adam(lr=0.00005)],
+    'decoder': [decoder, tf.keras.optimizers.Adam(lr=0.00005)],
   }
 
   # ==================== TRAIN LOOP ====================
   num_batches = (adj.shape[0] // CFG['batch_size']) + 1
   for e_i in range(CFG['epochs']):
+    epoch_loss = 0
     for b_i in range(num_batches):
       start_b = b_i * CFG['batch_size']
       end_b = min([(b_i + 1) * CFG['batch_size'], adj.shape[0]])
@@ -66,5 +72,8 @@ if __name__ == "__main__":
           name, tensor in node_features.items()},
         'num_nodes': num_nodes[start_b:end_b]
       }
-      train_step(models, batch)
-      print(f"e [{e_i}/{CFG['epochs']}] b [{end_b}/{adj.shape[0]}] loss {b_loss}")
+      batch_loss = train_step(models, batch)
+      epoch_loss += batch_loss
+      print(f"e [{e_i}/{CFG['epochs']}] b [{end_b}/{adj.shape[0]}] loss {batch_loss}")
+    epoch_loss = epoch_loss / num_batches
+    print(f"EPOCH {e_i} LOSS {epoch_loss}")

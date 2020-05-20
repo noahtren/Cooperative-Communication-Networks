@@ -6,6 +6,7 @@ import itertools
 
 import numpy as np
 import tensorflow as tf
+from cfg import CFG
 
 
 permutations = {
@@ -17,12 +18,27 @@ permutations = {
 
 
 def loss_fn(adj, nf, possible_adjs, possible_nfs):
+  pass
+  permute_dim = possible_adjs.shape[1]
   # calculate losses along last axis (per node)
+  lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
+    tf.keras.losses.binary_crossentropy
+  loss = lfn(tf.tile(adj[:, tf.newaxis], [1, permute_dim, 1, 1]), possible_adjs)
+
+  lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
+    tf.keras.losses.categorical_crossentropy
+  for name, pred_nf in possible_nfs.items():
+    loss += lfn(tf.tile(nf[name][:, tf.newaxis], [1, permute_dim, 1, 1]), pred_nf)
 
   # sum losses along second to last axis (per graph permutation)
+  loss = tf.math.reduce_sum(loss, axis=-1)
 
-  # argmax losses along second axis (per graph)
+  # argmin losses along second axis (per graph)
+  loss = tf.math.reduce_min(loss, axis=-1)
 
+  # sum loss for each graph in batch
+  loss = tf.math.reduce_sum(loss, axis=-1)
+  return loss
 
 
 def minimum_loss_permutation(adj, nf, adj_pred, nf_pred):

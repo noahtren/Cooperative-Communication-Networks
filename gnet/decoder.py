@@ -3,6 +3,7 @@ directly predicting adjacency matrix and edge feature.
 """
 
 from typing import Dict
+import code
 
 import tensorflow as tf
 
@@ -25,29 +26,27 @@ class GraphDecoder(tf.keras.layers.Layer):
         to its dimensionality. Example: {'ord': 4}
     """
     super(GraphDecoder, self).__init__()
-    self.adj_w = tf.keras.layers.Dense(max_nodes)
-    self.nf_w = {name: tf.keras.layers.Dense(size) for
+    self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency')
+    self.nf_w = {name: tf.keras.layers.Dense(size, name=f'feature_{name}') for
       name, size in node_feature_specs.items()}
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
 
-  def call(self, inputs):
+  def call(self, x):
     """
     Inputs:
       x: tensor of shape [batch_size, max_nodes, node_embedding]
     """
-    x = inputs['x']
-
     # predict adjacencies
-    adj = self.adj_w(x)
-    adj = self.scale * adj
-    adj = tf.nn.softmax(adj)
+    adj_out = self.adj_w(x)
+    adj_out = self.scale * adj_out
+    adj_out = tf.nn.sigmoid(adj_out)
 
     # predict node features
-    nf = {}
+    nf_out = {}
     for name, layer in self.nf_w.items():
       nf_pred = layer(x)
       nf_pred = self.scale * nf_pred
       nf_pred = tf.nn.softmax(nf_pred)
-      nf[name] = nf_pred
+      nf_out[name] = nf_pred
     
-    return adj, nf
+    return adj_out, nf_out
