@@ -44,6 +44,7 @@ def loss_fn(adj, nf, possible_adjs, possible_nfs):
 def minimum_loss_permutation(adj, nf, adj_pred, nf_pred):
   perms = permutations[adj.shape[1]]
   perm_mats = tf.one_hot(perms, depth=adj.shape[1])
+  adj = adj + tf.eye(adj.shape[1], adj.shape[1], batch_shape=[adj.shape[0]], dtype=tf.int32)
   # produce possible permutations of predictions
   possible_adjs = tf.matmul(
     tf.matmul(tf.linalg.matrix_transpose(perm_mats), adj_pred[:, tf.newaxis]),

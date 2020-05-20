@@ -10,6 +10,12 @@ from graph_match import minimum_loss_permutation
 from cfg import CFG
 
 
+# TODO: make sure representation is truly fixed-dimensional.
+# is something wrong because it doesn't converge instantly with
+# all the hints possible? i.e. node-level labels
+
+# my hunch is that the decoder needs work
+
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, **kwargs):
   instances = []
@@ -55,8 +61,8 @@ if __name__ == "__main__":
   encoder = Encoder(**CFG)
   decoder = GraphDecoder(**CFG)
   models = {
-    'encoder': [encoder, tf.keras.optimizers.Adam(lr=0.00005)],
-    'decoder': [decoder, tf.keras.optimizers.Adam(lr=0.00005)],
+    'encoder': [encoder, tf.keras.optimizers.Adam(CFG['lr'])],
+    'decoder': [decoder, tf.keras.optimizers.Adam(CFG['lr'])],
   }
 
   # ==================== TRAIN LOOP ====================

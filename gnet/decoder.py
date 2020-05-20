@@ -26,8 +26,9 @@ class GraphDecoder(tf.keras.layers.Layer):
         to its dimensionality. Example: {'ord': 4}
     """
     super(GraphDecoder, self).__init__()
-    self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency')
-    self.nf_w = {name: tf.keras.layers.Dense(size, name=f'feature_{name}') for
+    self.max_nodes = max_nodes
+    self.adj_w = tf.keras.layers.Dense(max_nodes * max_nodes, name='adjacency')
+    self.nf_w = {name: tf.keras.layers.Dense(max_nodes * size, name=f'feature_{name}') for
       name, size in node_feature_specs.items()}
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
 
@@ -36,9 +37,12 @@ class GraphDecoder(tf.keras.layers.Layer):
     Inputs:
       x: tensor of shape [batch_size, max_nodes, node_embedding]
     """
+    batch_size = x.shape[0]
+
     # predict adjacencies
     adj_out = self.adj_w(x)
     adj_out = self.scale * adj_out
+    adj_out = tf.reshape(adj_out, [batch_size, self.max_nodes, -1])
     adj_out = tf.nn.sigmoid(adj_out)
 
     # predict node features
@@ -46,6 +50,7 @@ class GraphDecoder(tf.keras.layers.Layer):
     for name, layer in self.nf_w.items():
       nf_pred = layer(x)
       nf_pred = self.scale * nf_pred
+      nf_pred = tf.reshape(nf_pred, [batch_size, self.max_nodes, -1])
       nf_pred = tf.nn.softmax(nf_pred)
       nf_out[name] = nf_pred
     

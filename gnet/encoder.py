@@ -163,4 +163,5 @@ class Encoder(tf.keras.Model):
     x = self.embed({'node_features': node_features})
     for attn_layer in self.global_attns:
       x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
+    x = tf.math.reduce_mean(x, axis=1)
     return x
