@@ -50,4 +50,4 @@ class GraphDecoder(tf.keras.layers.Layer):
       nf_pred = tf.nn.softmax(nf_pred)
       nf[name] = nf_pred
     
-    return adj, nf_pred
+    return adj, nf

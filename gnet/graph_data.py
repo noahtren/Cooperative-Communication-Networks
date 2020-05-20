@@ -244,8 +244,10 @@ class TensorGraph:
     adj = []
     node_features = {}
     node_feature_specs = {}
+    num_nodes = []
     for tg in tensor_graphs:
       adj.append(tg.adj)
+      num_nodes.append(tg.num_nodes)
       for name, tensor in tg.node_features.items():
         if name not in node_feature_specs:
           node_features[name] = [tensor]
@@ -254,9 +256,10 @@ class TensorGraph:
           node_features[name].append(tensor)
     # stack along batch axis
     adj = tf.stack(adj, axis=0)
-    node_features = {name: tf.stack(nf_list, axis=0) for name, nf_list in
+    node_features = {name: tf.cast(tf.stack(nf_list, axis=0), tf.float32) for name, nf_list in
       node_features.items()}
-    return adj, node_features, node_feature_specs
+    num_nodes = tf.concat(num_nodes, axis=0)
+    return adj, node_features, node_feature_specs, num_nodes
 
 
 if __name__ == "__main__":

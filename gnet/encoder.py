@@ -75,6 +75,8 @@ class GlobalAttention(tf.keras.layers.Layer):
     # TODO: may need to apply masking to bottom rows as they are used in dot-product,
     # but they shouldn't be. it seems like the only way to fix this is
     # by masking right *before* the dot product, and then again before softmaxing.
+    # TODO: global attention is nice, but there needs to be a way to embed
+    # adjacency matrix information so that it is preserved during encoding
 
     x = inputs['x']
     num_nodes = inputs['num_nodes']
