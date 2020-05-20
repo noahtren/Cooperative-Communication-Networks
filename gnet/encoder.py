@@ -36,15 +36,20 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
     return x
 
 
-class GlobalAttention(tf.keras.layers.Layer):
+class GlobalLocalAttention(tf.keras.layers.Layer):
   def __init__(self, num_heads:int, hidden_size:int):
-    """Multi-head global self-attention based generally on the original
-    Transformer paper.
+    """Multi-head global self-attention (based generally on the original
+    Transformer paper) combined with local graph attention (Graph Attention
+    Networks.)
 
     ---
     Attention Is All You Need by Vaswani et al.
     https://arxiv.org/abs/1706.03762
     ---
+    Graph Attention Networks by Veličković et al.
+    https://arxiv.org/abs/1710.10903
+    ---
+
 
     This layer incorporates a multi-head self-attention module as well as
     a feed-forward layer with the swish activation function.
@@ -53,15 +58,21 @@ class GlobalAttention(tf.keras.layers.Layer):
       num_heads
       hidden_size
     """
-    super(GlobalAttention, self).__init__()
+    super(GlobalLocalAttention, self).__init__()
     self.num_heads = num_heads
     self.hidden_size = hidden_size
-    self.q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
+    # local
+    self.local_q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.local_k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.local_v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    # global
+    self.global_q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.global_k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.global_v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    # out
     self.w_out_1 = tf.keras.layers.Dense(hidden_size)
     self.w_out_2 = tf.keras.layers.Dense(hidden_size)
-    self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
   
 
   def call(self, inputs):
@@ -80,11 +91,14 @@ class GlobalAttention(tf.keras.layers.Layer):
 
     x = inputs['x']
     num_nodes = inputs['num_nodes']
+    adj = inputs['adj']
+
+    # ==================== GLOBAL ATTENTION ====================
 
     # linear transformation of input embeddings
-    Qs = [q_w(x) for q_w in self.q_ws]
-    Ks = [k_w(x) for k_w in self.k_ws]
-    Vs = [v_w(x) for v_w in self.v_ws]
+    Qs = [q_w(x) for q_w in self.global_q_ws]
+    Ks = [k_w(x) for k_w in self.global_k_ws]
+    Vs = [v_w(x) for v_w in self.global_v_ws]
 
     # find alignment per attention head
     Es = [tf.matmul(q, k, transpose_b=True) for q, k in zip(Qs, Ks)]
@@ -103,11 +117,33 @@ class GlobalAttention(tf.keras.layers.Layer):
 
     # calculate alignment scores and aggregate contexts
     scores = [tf.nn.softmax(e) for e in Es]
-    contexts = [tf.matmul(score, v) for score, v in zip(scores, Vs)]
-    contexts = tf.concat(contexts, axis=-1)
+    global_context = [tf.matmul(score, v) for score, v in zip(scores, Vs)]
+    global_context = tf.concat(global_context, axis=-1)
+
+    # ==================== LOCAL ATTENTION ====================
+
+    # linear transformation of input embeddings
+    Qs = [q_w(x) for q_w in self.local_q_ws]
+    Ks = [k_w(x) for k_w in self.local_k_ws]
+    Vs = [v_w(x) for v_w in self.local_v_ws]
+
+    # find alignment per attention head
+    Es = [tf.matmul(q, k, transpose_b=True) for q, k in zip(Qs, Ks)]
+    Es = [self.scale * e for e in Es]
+
+    # apply masking wherever adj = 0, but also attend to self
+    # (we can do this by adding the identity matrix to the adjacency matrix)
+    adj = adj + tf.eye(adj.shape[1], adj.shape[1], batch_shape=[adj.shape[0]], dtype=tf.int32)
+    Es = [tf.where(adj == 1, e, tf.ones_like(e) * -1e9) for e in Es]
+
+    # calculate alignment scores and aggregate contexts
+    scores = [tf.nn.softmax(e) for e in Es]
+    local_context = [tf.matmul(score, v) for score, v in zip(scores, Vs)]
+    local_context = tf.concat(local_context, axis=-1)
 
     # produce new features from full context
-    x = self.w_out_1(contexts)
+    context = tf.concat([global_context, local_context], axis=-1)
+    x = self.w_out_1(context)
     x = tf.nn.swish(x)
     x = self.w_out_2(x)
     return x
@@ -118,13 +154,15 @@ class Encoder(tf.keras.Model):
                hidden_size:int, attention_layers:int, num_heads:int, **kwargs):
     super(Encoder, self).__init__()
     self.embed = NodeFeatureEmbed(hidden_size, node_feature_specs)
-    self.global_attns = [GlobalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
+    self.global_attns = [GlobalLocalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
 
 
   def call(self, inputs):
     node_features = inputs['node_features']
     num_nodes = inputs['num_nodes']
+    adj = inputs['adj']
+
     x = self.embed({'node_features': node_features})
     for attn_layer in self.global_attns:
-      x = attn_layer({'x': x, 'num_nodes': num_nodes})
+      x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
     return x
