@@ -1,7 +1,7 @@
 
 CFG = {
   # dataset
-  'max_nodes': 6,
+  'max_nodes': 4,
   'language_spec': 'arithmetic',
   'min_num_values': 3,
   'max_num_values': 3,
