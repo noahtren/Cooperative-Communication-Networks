@@ -172,10 +172,10 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
 
 class Encoder(tf.keras.Model):
   def __init__(self, max_nodes:int, node_feature_specs:Dict[str, int],
-               hidden_size:int, attention_layers:int, num_heads:int, **kwargs):
+               hidden_size:int, encoder_attention_layers:int, num_heads:int, **kwargs):
     super(Encoder, self).__init__()
     self.embed = NodeFeatureEmbed(hidden_size, node_feature_specs)
-    self.attns = [GlobalLocalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
+    self.attns = [GlobalLocalAttention(num_heads, hidden_size) for _ in range(encoder_attention_layers)]
 
 
   def call(self, inputs):

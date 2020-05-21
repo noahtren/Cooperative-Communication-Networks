@@ -59,7 +59,7 @@ class GlobalAttention(tf.keras.layers.Layer):
 
 class GraphDecoder(tf.keras.layers.Layer):
   def __init__(self, num_heads:int, hidden_size:int, max_nodes:int,
-               node_feature_specs:Dict[str, int], **kwargs):
+               node_feature_specs:Dict[str, int], decoder_attention_layers:int, **kwargs):
     """Simple graph reconstruction with dense feed-forward neural network based
     generally on the GraphVAE paper. I also added global self-attention as a
     refining step which improves accuracy.
@@ -81,7 +81,7 @@ class GraphDecoder(tf.keras.layers.Layer):
     self.max_nodes = max_nodes
 
     self.expand_w = tf.keras.layers.Dense(max_nodes * hidden_size)
-    self.global_attn = GlobalAttention(num_heads, hidden_size)
+    self.global_attns = [GlobalAttention(num_heads, hidden_size) for _ in range(decoder_attention_layers)]
 
     self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency')    
     self.nf_w = {name: tf.keras.layers.Dense(size + 1, name=f'feature_{name}') for
@@ -105,7 +105,8 @@ class GraphDecoder(tf.keras.layers.Layer):
     x = tf.reshape(expanded_x, [batch_size, self.max_nodes, -1])
 
     # local and global attention
-    x = self.global_attn(x)
+    for attn_layer in self.global_attns:
+      x = attn_layer(x)
 
     # predict adjacencies
     adj_out = self.adj_w(x)

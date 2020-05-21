@@ -1,4 +1,7 @@
 import code
+import datetime
+import json
+import os
 
 import tensorflow as tf
 from tqdm import tqdm
@@ -10,10 +13,15 @@ from graph_match import minimum_loss_permutation
 from cfg import CFG
 
 
+# TODO: a way to evaluate, at least statistically, how much the training and
+# testing datasets overlap.
+
+
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
-                max_nodes:int, num_samples:int, vis_first=False, **kwargs):
+                max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):
   instances = []
-  print(f'Generating dataset')
+  print(f"Generating {'test' if test else 'training'} dataset")
+  num_samples = num_samples // 5 if test else num_samples
   pbar = tqdm(total=num_samples)
   while len(instances) < num_samples:
     # make tree
@@ -44,8 +52,8 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
 
 
 @tf.function
-def train_step(models, batch):
-  with tf.GradientTape(persistent=True) as tape:
+def train_step(models, batch, test=False):
+  if test:
     x = models['encoder'][0](batch)
     adj_pred, nf_pred = models['decoder'][0](x)
     batch_loss = minimum_loss_permutation(
@@ -54,17 +62,32 @@ def train_step(models, batch):
       adj_pred,
       nf_pred
     )
-  for module, optim in models.values():
-    grads = tape.gradient(batch_loss, module.trainable_variables)
-    optim.apply_gradients(zip(grads, module.trainable_variables))
+    return batch_loss
+  else:
+    with tf.GradientTape(persistent=True) as tape:
+      x = models['encoder'][0](batch)
+      adj_pred, nf_pred = models['decoder'][0](x)
+      batch_loss = minimum_loss_permutation(
+        batch['adj_labels'],
+        batch['nf_labels'],
+        adj_pred,
+        nf_pred
+      )
+    for module, optim in models.values():
+      grads = tape.gradient(batch_loss, module.trainable_variables)
+      optim.apply_gradients(zip(grads, module.trainable_variables))
   return batch_loss
 
 
 if __name__ == "__main__":
   # ==================== DATA AND MODELS ====================
-  adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels = \
-    get_dataset(**CFG)
-  CFG['node_feature_specs'] = node_feature_specs
+  tr_adj, tr_node_features, tr_node_feature_specs, tr_num_nodes, \
+  tr_adj_labels, tr_nf_labels = get_dataset(**CFG, test=False)
+
+  test_adj, test_node_features, test_node_feature_specs, test_num_nodes, \
+  test_adj_labels, test_nf_labels = get_dataset(**CFG, test=True)
+
+  CFG['node_feature_specs'] = tr_node_feature_specs
   encoder = Encoder(**CFG)
   decoder = GraphDecoder(**CFG)
   lr = CFG['initial_lr']
@@ -77,24 +100,62 @@ if __name__ == "__main__":
     'decoder': [decoder, tf.keras.optimizers.Adam(lr)],
   }
 
+  # ==================== LOGGING ====================
+  log_dir = f"logs/{CFG['run_name']}"
+  train_log_dir = f"{log_dir}/train"
+  test_log_dir = f"{log_dir}/test"
+  train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+  test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+  # os.makedirs(train_log_dir)
+  # os.makedirs(test_log_dir)
+  current_time = str(datetime.datetime.now())
+  CFG['current_time'] = current_time
+  with open(os.path.join(log_dir, 'report.json'), 'w+') as f:
+    f.write(json.dumps(CFG, indent=4))
+
   # ==================== TRAIN LOOP ====================
-  num_batches = (adj.shape[0] // CFG['batch_size']) + 1
+  tr_num_batches = (tr_adj.shape[0] // CFG['batch_size']) + 1
+  test_num_batches = (test_adj.shape[0] // CFG['batch_size']) + 1
   for e_i in range(CFG['epochs']):
-    epoch_loss = 0
-    for b_i in range(num_batches):
-      end_b = min([(b_i + 1) * CFG['batch_size'], adj.shape[0]])
+    tr_epoch_loss = 0
+    test_epoch_loss = 0
+    # TRAIN BATCHES
+    for b_i in range(tr_num_batches):
+      end_b = min([(b_i + 1) * CFG['batch_size'], tr_adj.shape[0]])
       start_b = end_b - CFG['batch_size']
       batch = {
-        'adj': adj[start_b:end_b],
+        'adj': tr_adj[start_b:end_b],
         'node_features': {name: tensor[start_b:end_b] for
-          name, tensor in node_features.items()},
-        'adj_labels': adj_labels[start_b:end_b],
+          name, tensor in tr_node_features.items()},
+        'adj_labels': tr_adj_labels[start_b:end_b],
         'nf_labels': {name: tensor[start_b:end_b] for
-          name, tensor in nf_labels.items()},
-        'num_nodes': num_nodes[start_b:end_b],
+          name, tensor in tr_nf_labels.items()},
+        'num_nodes': tr_num_nodes[start_b:end_b],
       }
       batch_loss = train_step(models, batch)
-      epoch_loss += batch_loss
-      print(f"e [{e_i}/{CFG['epochs']}] b [{end_b}/{adj.shape[0]}] loss {batch_loss}")
-    epoch_loss = epoch_loss / num_batches
-    print(f"EPOCH {e_i} LOSS {epoch_loss}")
+      tr_epoch_loss += batch_loss
+      print(f"(TRAIN) e [{e_i}/{CFG['epochs']}] b [{end_b}/{tr_adj.shape[0]}] loss {batch_loss}", end="\r")
+    # TEST BATCHES
+    for b_i in range(test_num_batches):
+      end_b = min([(b_i + 1) * CFG['batch_size'], test_adj.shape[0]])
+      start_b = end_b - CFG['batch_size']
+      batch = {
+        'adj': test_adj[start_b:end_b],
+        'node_features': {name: tensor[start_b:end_b] for
+          name, tensor in test_node_features.items()},
+        'adj_labels': test_adj_labels[start_b:end_b],
+        'nf_labels': {name: tensor[start_b:end_b] for
+          name, tensor in test_nf_labels.items()},
+        'num_nodes': test_num_nodes[start_b:end_b],
+      }
+      batch_loss = train_step(models, batch, test=True)
+      test_epoch_loss += batch_loss
+      print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_adj.shape[0]}] loss {batch_loss}", end="\r")
+    # EPOCH METRICS
+    tr_epoch_loss = tr_epoch_loss / tr_num_batches
+    test_epoch_loss = test_epoch_loss / test_num_batches
+    print(f"EPOCH {e_i} TRAIN LOSS: {tr_epoch_loss} TEST LOSS: {test_epoch_loss}")
+    with train_summary_writer.as_default():
+      tf.summary.scalar('loss', tr_epoch_loss, step=e_i)
+    with test_summary_writer.as_default():
+      tf.summary.scalar('loss', test_epoch_loss, step=e_i)
