@@ -26,7 +26,7 @@ class GlobalAttention(tf.keras.layers.Layer):
 
 
   def call(self, x):
-    start_x = x
+    start_x = tf.nn.dropout(x, 0.1)
     # ==================== GLOBAL ATTENTION ====================
 
     # linear transformation of input embeddings
@@ -48,7 +48,7 @@ class GlobalAttention(tf.keras.layers.Layer):
     x = self.layer_norm_1(x)
     x = start_x + x
     x = tfa.activations.gelu(x)
-    pre_linear_x = x
+    pre_linear_x = tf.nn.dropout(x, 0.1)
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)

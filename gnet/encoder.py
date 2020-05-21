@@ -102,7 +102,7 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     # gains if I redid the multi-head attention layer to do multiple heads in parallel
 
     x = inputs['x']
-    start_x = x
+    start_x = tf.nn.dropout(x, 0.1)
     num_nodes = inputs['num_nodes']
     adj = inputs['adj']
 
@@ -161,7 +161,7 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     x = self.layer_norm_1(x)
     x = start_x + x
     x = tfa.activations.gelu(x)
-    pre_linear_x = x
+    pre_linear_x = tf.nn.dropout(x, 0.1)
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
