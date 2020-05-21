@@ -82,7 +82,7 @@ class GraphDecoder(tf.keras.layers.Layer):
     self.global_attn = GlobalAttention(num_heads, hidden_size)
 
     self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency')    
-    self.nf_w = {name: tf.keras.layers.Dense(size, name=f'feature_{name}') for
+    self.nf_w = {name: tf.keras.layers.Dense(size + 1, name=f'feature_{name}') for
       name, size in node_feature_specs.items()}
 
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
