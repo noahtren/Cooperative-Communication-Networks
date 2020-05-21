@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from gnet.encoder import GlobalAttention
+from gnet.encoder import GlobalLocalAttention
 
 def test_global_attn():
   x = tf.random.normal((2, 7, 512))

@@ -10,13 +10,6 @@ from graph_match import minimum_loss_permutation
 from cfg import CFG
 
 
-# NOTE: encoder heads are not in parallel. there could probably be performance
-# gains if I redid the multi-head attention layer to do multiple heads in parallel
-
-# TODO: add a dimension to labels and predictions that tells if a particular
-# value does not exist. this is not a problem for adjacency matrices but it is
-# a problem for node features
-
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, **kwargs):
   instances = []

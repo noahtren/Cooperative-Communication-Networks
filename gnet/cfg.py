@@ -1,12 +1,13 @@
 
 CFG = {
   # dataset
-  'max_nodes': 5,
+  'max_nodes': 6,
+  # 5! = 120
+  # 6! = 720
   'language_spec': 'arithmetic',
   'min_num_values': 3,
-  'max_num_values': 3,
-  'num_samples': 10_000,
-  # 6! = 720
+  'max_num_values': 4,
+  'num_samples': 100_000,
 
   # models
   'hidden_size': 784,

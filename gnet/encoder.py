@@ -98,6 +98,9 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     # but they shouldn't be. it seems like the only way to fix this is
     # by masking right *before* the dot product, and then again before softmaxing.
 
+    # NOTE: encoder heads are not in parallel. there could probably be performance
+    # gains if I redid the multi-head attention layer to do multiple heads in parallel
+
     x = inputs['x']
     start_x = x
     num_nodes = inputs['num_nodes']

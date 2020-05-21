@@ -14,7 +14,7 @@ class GlobalAttention(tf.keras.layers.Layer):
     self.num_heads = num_heads
     self.hidden_size = hidden_size
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
-    # local
+    # global attention
     self.q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
     self.k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
     self.v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
@@ -61,7 +61,8 @@ class GraphDecoder(tf.keras.layers.Layer):
   def __init__(self, num_heads:int, hidden_size:int, max_nodes:int,
                node_feature_specs:Dict[str, int], **kwargs):
     """Simple graph reconstruction with dense feed-forward neural network based
-    generally on the GraphVAE paper.
+    generally on the GraphVAE paper. I also added global self-attention as a
+    refining step which improves accuracy.
 
     ---
     GraphVAE: Towards Generation of Small Graphs Using Variational Autoencoders,
@@ -70,6 +71,7 @@ class GraphDecoder(tf.keras.layers.Layer):
     ---
 
     Args:
+      num_heads
       hidden_size
       max_nodes
       node_feature_specs: a dict of integers, each mapping a node feature name
@@ -91,7 +93,9 @@ class GraphDecoder(tf.keras.layers.Layer):
   def call(self, Z):
     """
     Inputs:
-      Z: tensor of shape [batch_size, node_embedding]
+      Z: tensor of shape [batch_size, node_embedding], which is a
+    fixed-dimensional representation of a graph that will be reconstructed to
+    its nodes.
     """
     batch_size = Z.shape[0]
 

@@ -1,4 +1,5 @@
-"""Brute force graph matching with TensorFlow code
+"""Brute force graph matching with TensorFlow code. This works for small graphs.
+(For graphs with >6 max nodes, it becomes pretty much unfeasible.)
 """
 
 import code
