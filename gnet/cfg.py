@@ -17,6 +17,6 @@ CFG = {
   'batch_size': 128,
   'epochs': 300,
   'mse_loss_only': True,
-  'lr': 0.0005
+  'lr': 0.005
 }
 RESULTS = {}

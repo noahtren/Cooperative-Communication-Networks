@@ -10,6 +10,10 @@ from graph_match import minimum_loss_permutation
 from cfg import CFG
 
 
+# NOTE: encoder heads are not in parallel. there could probably be performance
+# gains if I redid the multi-head attention layer to do multiple heads in parallel
+
+
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, **kwargs):
   instances = []
@@ -32,6 +36,7 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
   return adj, node_features, node_feature_specs, num_nodes
 
 
+@tf.function
 def train_step(models, batch):
   with tf.GradientTape(persistent=True) as tape:
     x = models['encoder'][0](batch)
@@ -64,8 +69,8 @@ if __name__ == "__main__":
   for e_i in range(CFG['epochs']):
     epoch_loss = 0
     for b_i in range(num_batches):
-      start_b = b_i * CFG['batch_size']
       end_b = min([(b_i + 1) * CFG['batch_size'], adj.shape[0]])
+      start_b = end_b - CFG['batch_size']
       batch = {
         'adj': adj[start_b:end_b],
         'node_features': {name: tensor[start_b:end_b] for

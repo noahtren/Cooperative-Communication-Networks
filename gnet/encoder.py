@@ -8,6 +8,7 @@ import code
 from typing import Dict
 
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 
 class NodeFeatureEmbed(tf.keras.layers.Layer):
@@ -18,7 +19,10 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
     super(NodeFeatureEmbed, self).__init__()
     self.nf_w = {name: tf.keras.layers.Dense(hidden_size) for name in
       node_feature_specs.keys()}
+    self.w = tf.keras.layers.Dense(hidden_size)
+    self.layer_norm_1 = tf.keras.layers.LayerNormalization()
     self.w_out = tf.keras.layers.Dense(hidden_size)
+    self.layer_norm_2 = tf.keras.layers.LayerNormalization()
 
 
   def call(self, inputs):
@@ -27,12 +31,19 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
     feature_reps = []
     for name, layer in self.nf_w.items():
       nf_rep = layer(nf[name])
-      nf_rep = tf.nn.swish(nf_rep)
+      nf_rep = tfa.activations.gelu(nf_rep)
       feature_reps.append(nf_rep)
     
     feature_reps = tf.concat(feature_reps, axis=-1)
-    x = self.w_out(feature_reps)
-    x = tf.nn.swish(x)
+    x = self.w(feature_reps)
+    x = self.layer_norm_1(x)
+    pre_linear_x = x
+    x = tfa.activations.gelu(x)
+
+    x = self.w_out(x)
+    x = self.layer_norm_2(x)
+    x = pre_linear_x + x
+    x = tfa.activations.gelu(x)
     return x
 
 
@@ -52,7 +63,7 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
 
 
     This layer incorporates a multi-head self-attention module as well as
-    a feed-forward layer with the swish activation function.
+    a feed-forward layer with the gelu activation function.
 
     Args:
       num_heads
@@ -72,9 +83,10 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     self.global_v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
     # out
     self.w_out_1 = tf.keras.layers.Dense(hidden_size)
+    self.layer_norm_1 = tf.keras.layers.LayerNormalization()
     self.w_out_2 = tf.keras.layers.Dense(hidden_size)
+    self.layer_norm_2 = tf.keras.layers.LayerNormalization()
   
-
   def call(self, inputs):
     """
     Inputs:
@@ -82,12 +94,12 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
       num_nodes: a tensor of shape [batch_size] stating the number of nodes per
         input graph
     """
-    # TODO: should I add layer normalization?
     # TODO: may need to apply masking to bottom rows as they are used in dot-product,
     # but they shouldn't be. it seems like the only way to fix this is
     # by masking right *before* the dot product, and then again before softmaxing.
 
     x = inputs['x']
+    start_x = x
     num_nodes = inputs['num_nodes']
     adj = inputs['adj']
 
@@ -141,9 +153,17 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
 
     # produce new features from full context
     context = tf.concat([global_context, local_context], axis=-1)
+
     x = self.w_out_1(context)
-    x = tf.nn.swish(x)
+    x = self.layer_norm_1(x)
+    x = start_x + x
+    x = tfa.activations.gelu(x)
+    pre_linear_x = x
+
     x = self.w_out_2(x)
+    x = self.layer_norm_2(x)
+    x = pre_linear_x + x
+    x = tfa.activations.gelu(x)
     return x
 
 
@@ -152,7 +172,7 @@ class Encoder(tf.keras.Model):
                hidden_size:int, attention_layers:int, num_heads:int, **kwargs):
     super(Encoder, self).__init__()
     self.embed = NodeFeatureEmbed(hidden_size, node_feature_specs)
-    self.global_attns = [GlobalLocalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
+    self.attns = [GlobalLocalAttention(num_heads, hidden_size) for _ in range(attention_layers)]
 
 
   def call(self, inputs):
@@ -161,7 +181,7 @@ class Encoder(tf.keras.Model):
     adj = inputs['adj']
 
     x = self.embed({'node_features': node_features})
-    for attn_layer in self.global_attns:
+    for attn_layer in self.attns:
       x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
     x = tf.math.reduce_mean(x, axis=1)
     return x
