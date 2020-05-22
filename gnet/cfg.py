@@ -23,7 +23,7 @@ CFG = {
   'c_out': 3,
 
   # training
-  'batch_size': 16,
+  'batch_size': 64,
   'epochs': 3_000,
   'mse_loss_only': False,
   'initial_lr': 0.0005,
