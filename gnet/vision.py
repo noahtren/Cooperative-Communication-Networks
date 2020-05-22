@@ -17,11 +17,13 @@ class CPPN(tf.keras.Model):
   pixel values directly.
   """
   def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, G_num_layers:int,
-               cppn_loc_embed_dim:int=64, c_out:int=1, **kwargs):
+               cppn_loc_embed_dim, cppn_Z_embed_dim:int, c_out:int=1,
+               **kwargs):
     super(CPPN, self).__init__()
     self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim)
-    self.ws = [tf.keras.layers.Dense(G_hidden_size) for _ in range(G_num_layers)]
+    self.Z_embed = tf.keras.layers.Dense(cppn_Z_embed_dim)
     self.in_w = tf.keras.layers.Dense(G_hidden_size)
+    self.ws = [tf.keras.layers.Dense(G_hidden_size) for _ in range(G_num_layers)]
     self.out_w = tf.keras.layers.Dense(c_out)
     self.y_dim = y_dim
     self.x_dim = x_dim
@@ -45,6 +47,7 @@ class CPPN(tf.keras.Model):
     loc = tf.tile(loc[tf.newaxis], [batch_size, 1, 1, 1])
 
     # concatenate Z to locations
+    Z = self.Z_embed(Z)
     Z = tf.tile(Z[:, tf.newaxis, tf.newaxis], [1, self.y_dim, self.x_dim, 1])
     x = tf.concat([loc, Z], axis=-1)
     x = self.in_w(x)

@@ -13,7 +13,24 @@ from vision import CPPN, ImageDecoder
 from cfg import CFG
 from aug import get_noisy_channel
 
-NUM_SYMBOLS = 12
+NUM_SYMBOLS = 1_024
+
+
+"""Hyperparameters
+
+Image augmentation: the types of image augmentation to do, as well as the
+curriculum to follow for changes to the image augmentation pipeline.
+
+Generative Models: generator as a CPPN, or some other generative model.
+
+Discriminative Model: Using inception as the backbone, or some other thing?
+Maybe:
+  * ResNet
+  * VGG
+
+Optimizers: which optimizers to use and what learning rate to use
+
+"""
 
 
 def make_data():
@@ -26,12 +43,12 @@ def make_data():
 
 @tf.function
 def train_step(models, symbols, noisy_channel):
-  difficulty = random.randint(0, 1)
+  difficulty = random.randint(0, 10)
   with tf.GradientTape(persistent=True) as tape:
     imgs = models['generator'][0](symbols)
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
-    batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions)
+    batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=0.1)
     batch_loss = tf.math.reduce_mean(batch_loss)
   for module, optim in models.values():
     grads = tape.gradient(batch_loss, module.trainable_variables)
@@ -61,8 +78,8 @@ if __name__ == "__main__":
   discriminator = ImageDecoder
   discriminator = make_decoder_classifier(discriminator)
   models = {
-    'generator': [generator, tf.keras.optimizers.Adam(lr=0.0001)],
-    'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=0.0001)],
+    'generator': [generator, tf.keras.optimizers.Adam(CFG['generator_lr'])],
+    'discriminator': [discriminator, tf.keras.optimizers.Adam(CFG['discriminator_lr'])],
   }
   noisy_channel = get_noisy_channel()
   num_batches = CFG['num_samples'] // CFG['batch_size']
@@ -81,9 +98,11 @@ if __name__ == "__main__":
     # VISUALIZE
     if e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
-      sample_imgs = generator(samples)
+      sample_idxs = tf.random.uniform([4], 0, NUM_SYMBOLS, tf.int32)
+      these_samples = tf.gather(samples, sample_idxs)
+      sample_imgs = generator(these_samples)
       # scale tanh to visual range
-      sample_img = (sample_imgs + 1) / 2
+      sample_imgs = (sample_imgs + 1) / 2
       axes[0][0].imshow(sample_imgs[0])
       axes[0][1].imshow(sample_imgs[1])
       axes[1][0].imshow(sample_imgs[2])

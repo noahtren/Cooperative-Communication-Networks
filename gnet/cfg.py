@@ -21,7 +21,10 @@ CFG = {
   'G_hidden_size': 128,
   'G_num_layers': 6,
   'cppn_loc_embed_dim': 128,
+  'cppn_Z_embed_dim': 128,
   'c_out': 3,
+  'generator_lr': 0.001,
+  'discriminator_lr': 0.001,
 
   # training
   'batch_size': 16,
