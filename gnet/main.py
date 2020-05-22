@@ -9,6 +9,7 @@ from tqdm import tqdm
 from graph_data import TensorGraph
 from encoder import Encoder 
 from decoder import GraphDecoder
+from vision import CPPN, ImageDecoder
 from graph_match import minimum_loss_permutation
 from cfg import CFG
 
@@ -51,28 +52,29 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
   return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
 
 
+def predict(models, batch):
+  x = models['encoder'][0](batch)
+  if 'generator' in models:
+    img = models['generator'][0](x)
+    x = models['discriminator'][0](img)
+  adj_pred, nf_pred = models['decoder'][0](x)
+  batch_loss, acc = minimum_loss_permutation(
+    batch['adj_labels'],
+    batch['nf_labels'],
+    adj_pred,
+    nf_pred
+  )
+  return batch_loss, acc
+
+
 @tf.function
 def train_step(models, batch, test=False):
   if test:
-    x = models['encoder'][0](batch)
-    adj_pred, nf_pred = models['decoder'][0](x)
-    batch_loss, acc = minimum_loss_permutation(
-      batch['adj_labels'],
-      batch['nf_labels'],
-      adj_pred,
-      nf_pred
-    )
+    batch_loss, acc = predict(models, batch)
     return batch_loss, acc
   else:
     with tf.GradientTape(persistent=True) as tape:
-      x = models['encoder'][0](batch)
-      adj_pred, nf_pred = models['decoder'][0](x)
-      batch_loss, acc = minimum_loss_permutation(
-        batch['adj_labels'],
-        batch['nf_labels'],
-        adj_pred,
-        nf_pred
-      )
+      batch_loss, acc = predict(models, batch)
     for module, optim in models.values():
       grads = tape.gradient(batch_loss, module.trainable_variables)
       optim.apply_gradients(zip(grads, module.trainable_variables))
@@ -116,6 +118,11 @@ if __name__ == "__main__":
     'encoder': [encoder, tf.keras.optimizers.Adam(lr)],
     'decoder': [decoder, tf.keras.optimizers.Adam(lr)],
   }
+  if CFG['VISION']:
+    generator = CPPN(**CFG)
+    discriminator = ImageDecoder
+    models['generator'] = [generator, tf.keras.optimizers.Adam(lr)]
+    models['discriminator'] = [discriminator, tf.keras.optimizers.Adam(lr)]
 
   # ==================== LOGGING ====================
   log_dir = f"logs/{CFG['run_name']}"

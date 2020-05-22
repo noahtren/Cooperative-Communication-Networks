@@ -7,19 +7,26 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 3,
   'max_num_values': 4,
-  'num_samples': 1000,
+  'num_samples': 15_000,
 
   # models
-  'hidden_size': 784,
-  'encoder_attention_layers': 6,
-  'decoder_attention_layers': 2,
+  'VISION': True,
+  'hidden_size': 512,
+  'encoder_attention_layers': 4,
+  'decoder_attention_layers': 4,
   'num_heads': 6,
+  'y_dim': 96,
+  'x_dim': 96,
+  'G_hidden_size': 128,
+  'G_num_layers': 3,
+  'cppn_loc_embed_dim': 128,
+  'c_out': 3,
 
   # training
-  'batch_size': 128,
+  'batch_size': 16,
   'epochs': 3_000,
   'mse_loss_only': False,
-  'initial_lr': 0.0002,
+  'initial_lr': 0.0005,
   'use_exponential_rate_scheduler': True,
 
   # checkpointing and saving
