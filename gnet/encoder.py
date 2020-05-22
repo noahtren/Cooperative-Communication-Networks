@@ -161,7 +161,7 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     x = self.layer_norm_1(x)
     x = start_x + x
     x = tfa.activations.gelu(x)
-    pre_linear_x = tf.nn.dropout(x, 0.1)
+    pre_linear_x = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)

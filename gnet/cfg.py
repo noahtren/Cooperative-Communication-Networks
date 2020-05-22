@@ -7,22 +7,23 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 3,
   'max_num_values': 4,
-  'num_samples': 30_000,
+  'num_samples': 1000,
 
   # models
   'hidden_size': 784,
-  'encoder_attention_layers': 4,
-  'decoder_attention_layers': 0,
+  'encoder_attention_layers': 6,
+  'decoder_attention_layers': 2,
   'num_heads': 6,
 
   # training
-  'batch_size': 96,
-  'epochs': 300,
-  'mse_loss_only': True,
-  'initial_lr': 0.001,
+  'batch_size': 128,
+  'epochs': 3_000,
+  'mse_loss_only': False,
+  'initial_lr': 0.0002,
   'use_exponential_rate_scheduler': True,
 
   # checkpointing and saving
-  'run_name': 'large_no_decoder'
+  # set to NOLOG to prevent logging
+  'run_name': 'NOLOG'
 }
 RESULTS = {}

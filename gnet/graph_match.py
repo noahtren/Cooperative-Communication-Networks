@@ -19,27 +19,44 @@ permutations = {
 
 
 def loss_fn(adj, nf, possible_adjs, possible_nfs):
+  acc = {}
   permute_dim = possible_adjs.shape[1]
 
   # calculate losses along last axis (per node)
   lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
-    tf.keras.losses.binary_crossentropy
-  loss = lfn(tf.tile(adj[:, tf.newaxis], [1, permute_dim, 1, 1]), possible_adjs)
+    lambda true, pred: tf.keras.losses.binary_crossentropy(true, pred, label_smoothing=0.1)
+
+  adj_label = tf.tile(adj[:, tf.newaxis], [1, permute_dim, 1, 1])
+  loss = lfn(adj_label, possible_adjs)
 
   lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
-    tf.keras.losses.categorical_crossentropy
+    lambda true, pred: tf.keras.losses.categorical_crossentropy(true, pred, label_smoothing=0.1)
   for name, pred_nf in possible_nfs.items():
-    loss += lfn(tf.tile(nf[name][:, tf.newaxis], [1, permute_dim, 1, 1]), pred_nf)
+    nf_label = tf.tile(nf[name][:, tf.newaxis], [1, permute_dim, 1, 1])
+    loss += lfn(nf_label, pred_nf)
 
   # sum losses along second to last axis (per graph permutation)
   loss = tf.math.reduce_sum(loss, axis=-1)
 
   # argmin losses along second axis (per graph)
-  loss = tf.math.reduce_min(loss, axis=-1)
+  min_idxs = tf.argmin(loss, axis=-1)
+  min_idxs = tf.stack([tf.range(128, dtype=tf.int64), min_idxs], axis=1)
+  loss = tf.gather_nd(loss, min_idxs)
+
+  # calculate accuracy metrics
+  selected_adjs = tf.gather_nd(possible_adjs, min_idxs)
+  acc['adj'] = tf.math.reduce_mean(
+    tf.keras.metrics.binary_accuracy(tf.cast(adj, tf.float32), selected_adjs)
+  )
+  for name, pred_nf in possible_nfs.items():
+    selected_nf = tf.gather_nd(pred_nf, min_idxs)
+    acc[name] = tf.math.reduce_mean(
+      tf.keras.metrics.categorical_accuracy(nf[name], selected_nf)
+    )
 
   # sum loss for each graph in batch
   loss = tf.math.reduce_sum(loss, axis=-1)
-  return loss
+  return loss, acc
 
 
 def minimum_loss_permutation(adj, nf, adj_pred, nf_pred):
@@ -54,5 +71,5 @@ def minimum_loss_permutation(adj, nf, adj_pred, nf_pred):
     name: tf.matmul(tf.linalg.matrix_transpose(perm_mats), tensor[:, tf.newaxis]) for
       name, tensor in nf_pred.items()
   }
-  min_loss = loss_fn(adj, nf, possible_adjs, possible_nfs)
-  return min_loss
+  min_loss, acc = loss_fn(adj, nf, possible_adjs, possible_nfs)
+  return min_loss, acc

@@ -56,18 +56,18 @@ def train_step(models, batch, test=False):
   if test:
     x = models['encoder'][0](batch)
     adj_pred, nf_pred = models['decoder'][0](x)
-    batch_loss = minimum_loss_permutation(
+    batch_loss, acc = minimum_loss_permutation(
       batch['adj_labels'],
       batch['nf_labels'],
       adj_pred,
       nf_pred
     )
-    return batch_loss
+    return batch_loss, acc
   else:
     with tf.GradientTape(persistent=True) as tape:
       x = models['encoder'][0](batch)
       adj_pred, nf_pred = models['decoder'][0](x)
-      batch_loss = minimum_loss_permutation(
+      batch_loss, acc = minimum_loss_permutation(
         batch['adj_labels'],
         batch['nf_labels'],
         adj_pred,
@@ -76,7 +76,24 @@ def train_step(models, batch, test=False):
     for module, optim in models.values():
       grads = tape.gradient(batch_loss, module.trainable_variables)
       optim.apply_gradients(zip(grads, module.trainable_variables))
-  return batch_loss
+  return batch_loss, acc
+
+
+def update_acc(acc, batch_acc):
+  """Update accuracy values for epoch based on batch results.
+  """
+  for name in batch_acc.keys():
+    if name not in acc:
+      acc[name] = batch_acc[name]
+    else:
+      acc[name] += batch_acc[name]
+  return acc
+
+
+def normalize_acc(acc, num_batches):
+  for name, value in acc.items():
+    acc[name] = (value / num_batches).numpy().item()
+  return acc
 
 
 if __name__ == "__main__":
@@ -119,6 +136,8 @@ if __name__ == "__main__":
   for e_i in range(CFG['epochs']):
     tr_epoch_loss = 0
     test_epoch_loss = 0
+    tr_epoch_acc = {}
+    test_epoch_acc = {}
     # TRAIN BATCHES
     for b_i in range(tr_num_batches):
       end_b = min([(b_i + 1) * CFG['batch_size'], tr_adj.shape[0]])
@@ -132,8 +151,9 @@ if __name__ == "__main__":
           name, tensor in tr_nf_labels.items()},
         'num_nodes': tr_num_nodes[start_b:end_b],
       }
-      batch_loss = train_step(models, batch)
+      batch_loss, batch_acc = train_step(models, batch)
       tr_epoch_loss += batch_loss
+      update_acc(tr_epoch_acc, batch_acc)
       print(f"(TRAIN) e [{e_i}/{CFG['epochs']}] b [{end_b}/{tr_adj.shape[0]}] loss {batch_loss}", end="\r")
     # TEST BATCHES
     for b_i in range(test_num_batches):
@@ -148,14 +168,24 @@ if __name__ == "__main__":
           name, tensor in test_nf_labels.items()},
         'num_nodes': test_num_nodes[start_b:end_b],
       }
-      batch_loss = train_step(models, batch, test=True)
+      batch_loss, batch_acc = train_step(models, batch, test=True)
       test_epoch_loss += batch_loss
+      update_acc(test_epoch_acc, batch_acc)
       print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_adj.shape[0]}] loss {batch_loss}", end="\r")
     # EPOCH METRICS
     tr_epoch_loss = tr_epoch_loss / tr_num_batches
     test_epoch_loss = test_epoch_loss / test_num_batches
+    tr_epoch_acc = normalize_acc(tr_epoch_acc, tr_num_batches)
+    test_epoch_acc = normalize_acc(test_epoch_acc, test_num_batches)
     print(f"EPOCH {e_i} TRAIN LOSS: {tr_epoch_loss} TEST LOSS: {test_epoch_loss}")
-    with train_summary_writer.as_default():
-      tf.summary.scalar('loss', tr_epoch_loss, step=e_i)
-    with test_summary_writer.as_default():
-      tf.summary.scalar('loss', test_epoch_loss, step=e_i)
+    print(f"Train accuracies: {json.dumps(tr_epoch_acc, indent=4)}")
+    print(f"Test accuracies: {json.dumps(test_epoch_acc, indent=4)}")
+    if CFG['run_name'] != 'NOLOG':
+      with train_summary_writer.as_default():
+        tf.summary.scalar('loss', tr_epoch_loss, step=e_i)
+        for name, metric in tr_epoch_acc.items():
+          tf.summary.scalar(name, metric, step=e_i)
+      with test_summary_writer.as_default():
+        tf.summary.scalar('loss', test_epoch_loss, step=e_i)
+        for name, metric in test_epoch_acc.items():
+          tf.summary.scalar(name, metric, step=e_i)
