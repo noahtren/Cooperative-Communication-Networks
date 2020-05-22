@@ -21,6 +21,8 @@ from cfg import CFG
 # vision modules into the latent space afterwards. may be easier to learn than
 # doing everything end-to-end from scratch.
 
+# NOTE: training overnight did not work with these parameters
+
 
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):

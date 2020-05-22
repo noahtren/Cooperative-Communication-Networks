@@ -21,10 +21,12 @@ class CPPN(tf.keras.Model):
     super(CPPN, self).__init__()
     self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim)
     self.ws = [tf.keras.layers.Dense(G_hidden_size) for _ in range(G_num_layers)]
+    self.in_w = tf.keras.layers.Dense(G_hidden_size)
     self.out_w = tf.keras.layers.Dense(c_out)
     self.y_dim = y_dim
     self.x_dim = x_dim
-    self.scale = 1 / max([y_dim, x_dim])
+    self.spatial_scale = 1 / max([y_dim, x_dim])
+    self.output_scale = 1. / tf.math.sqrt(tf.cast(G_hidden_size, tf.float32))
 
 
   def call(self, Z):
@@ -33,8 +35,8 @@ class CPPN(tf.keras.Model):
     # get pixel locations and embed pixels
     coords = tf.where(tf.ones((self.y_dim, self.x_dim)))
     coords = tf.cast(tf.reshape(coords, (self.y_dim, self.x_dim, 2)), tf.float32)
-    coords = tf.stack([coords[:, :, 0] * self.scale,
-                       coords[:, :, 1] * self.scale], axis=-1)
+    coords = tf.stack([coords[:, :, 0] * self.spatial_scale,
+                       coords[:, :, 1] * self.spatial_scale], axis=-1)
     dists = tf.stack([coords[:, :, 0] - 0.5,
                       coords[:, :, 1] - 0.5], axis=-1)
     r = tf.sqrt(tf.math.reduce_sum(dists ** 2, axis=-1))[..., tf.newaxis]
@@ -45,10 +47,13 @@ class CPPN(tf.keras.Model):
     # concatenate Z to locations
     Z = tf.tile(Z[:, tf.newaxis, tf.newaxis], [1, self.y_dim, self.x_dim, 1])
     x = tf.concat([loc, Z], axis=-1)
+    x = self.in_w(x)
 
     # encode
     for layer in self.ws:
+      start_x = tf.nn.dropout(x, 0.1)
       x = layer(x)
+      x = x + start_x
       x = tfa.activations.gelu(x)
 
     x = self.out_w(x)

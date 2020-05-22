@@ -7,7 +7,7 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 3,
   'max_num_values': 4,
-  'num_samples': 15_000,
+  'num_samples': 2_000,
 
   # models
   'VISION': True,
@@ -17,13 +17,13 @@ CFG = {
   'num_heads': 6,
   'y_dim': 96,
   'x_dim': 96,
-  'G_hidden_size': 128,
+  'G_hidden_size': 256,
   'G_num_layers': 3,
   'cppn_loc_embed_dim': 128,
   'c_out': 3,
 
   # training
-  'batch_size': 64,
+  'batch_size': 16,
   'epochs': 3_000,
   'mse_loss_only': False,
   'initial_lr': 0.0005,
