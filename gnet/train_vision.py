@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 from vision import CPPN, ImageDecoder
 from cfg import CFG
+from aug import get_noisy_channel
 
 NUM_SYMBOLS = 12
 
@@ -24,9 +25,11 @@ def make_data():
 
 
 @tf.function
-def train_step(models, symbols):
+def train_step(models, symbols, noisy_channel):
+  difficulty = random.randint(0, 1)
   with tf.GradientTape(persistent=True) as tape:
     imgs = models['generator'][0](symbols)
+    imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
     batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions)
     batch_loss = tf.math.reduce_mean(batch_loss)
@@ -58,9 +61,10 @@ if __name__ == "__main__":
   discriminator = ImageDecoder
   discriminator = make_decoder_classifier(discriminator)
   models = {
-    'generator': [generator, tf.keras.optimizers.Adam(lr=0.0005)],
-    'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=0.0005)],
+    'generator': [generator, tf.keras.optimizers.Adam(lr=0.0001)],
+    'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=0.0001)],
   }
+  noisy_channel = get_noisy_channel()
   num_batches = CFG['num_samples'] // CFG['batch_size']
   for e_i in range(CFG['epochs']):
     epoch_loss = 0
@@ -69,7 +73,7 @@ if __name__ == "__main__":
       end_b = min([CFG['num_samples'], (b_i + 1) * CFG['batch_size']])
       start_b = end_b - CFG['batch_size']
       batch = data[start_b:end_b]
-      batch_loss = train_step(models, batch)
+      batch_loss = train_step(models, batch, noisy_channel)
       epoch_loss += batch_loss
       print(f"e [{e_i}/{CFG['epochs']}] b [{end_b}/{data.shape[0]}] loss {batch_loss}", end="\r")
     epoch_loss = epoch_loss / num_batches
