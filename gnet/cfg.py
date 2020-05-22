@@ -9,16 +9,17 @@ CFG = {
   'max_num_values': 4,
   'num_samples': 2_000,
 
-  # models
-  'VISION': True,
+  # graph models
   'hidden_size': 512,
   'encoder_attention_layers': 4,
   'decoder_attention_layers': 4,
   'num_heads': 6,
   'y_dim': 96,
   'x_dim': 96,
-  'G_hidden_size': 256,
-  'G_num_layers': 3,
+  # vision models
+  'VISION': True,
+  'G_hidden_size': 128,
+  'G_num_layers': 6,
   'cppn_loc_embed_dim': 128,
   'c_out': 3,
 

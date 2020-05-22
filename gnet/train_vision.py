@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from vision import CPPN, ImageDecoder
 from cfg import CFG
 
-NUM_SYMBOLS = 4
+NUM_SYMBOLS = 12
 
 
 def make_data():
@@ -43,7 +43,9 @@ def make_decoder_classifier(decoder):
   """
   inputs = decoder.inputs
   x = decoder.outputs[0]
+  scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
   x = tf.keras.layers.Dense(NUM_SYMBOLS)(x)
+  x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
   x = tf.keras.layers.Activation(tf.nn.softmax)(x)
   x = tf.keras.layers.Reshape((NUM_SYMBOLS,))(x)
   model = tf.keras.Model(inputs=inputs, outputs=[x])
@@ -56,8 +58,8 @@ if __name__ == "__main__":
   discriminator = ImageDecoder
   discriminator = make_decoder_classifier(discriminator)
   models = {
-    'generator': [generator, tf.keras.optimizers.Adam()],
-    'discriminator': [discriminator, tf.keras.optimizers.Adam()],
+    'generator': [generator, tf.keras.optimizers.Adam(lr=0.0005)],
+    'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=0.0005)],
   }
   num_batches = CFG['num_samples'] // CFG['batch_size']
   for e_i in range(CFG['epochs']):
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     epoch_loss = epoch_loss / num_batches
     print(f"EPOCH {e_i} LOSS: {epoch_loss}")
     # VISUALIZE
-    if e_i // 2 == 0:
+    if e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
       sample_imgs = generator(samples)
       # scale tanh to visual range
@@ -82,4 +84,4 @@ if __name__ == "__main__":
       axes[0][1].imshow(sample_imgs[1])
       axes[1][0].imshow(sample_imgs[2])
       axes[1][1].imshow(sample_imgs[3])
-      plt.show()
+      plt.savefig(f"{e_i}.png")

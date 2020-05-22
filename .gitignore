@@ -4,3 +4,4 @@ __pycache__/
 gnet.egg-info/
 gviz/
 logs/
+*.png
