@@ -5,3 +5,5 @@ gnet.egg-info/
 gviz/
 logs/
 *.png
+*.mp4
+*.gif
