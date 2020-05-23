@@ -3,6 +3,8 @@ tensorflow-addons
 graphviz
 matplotlib
 tqdm
+imageio
+imageio-ffmpeg
 
 # conda:
 graphviz
