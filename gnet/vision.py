@@ -61,6 +61,10 @@ class CPPN(tf.keras.Model):
 
     x = self.out_w(x)
     x = tf.nn.tanh(x)
+    if x.shape[-1] == 1:
+      # Copy grayscale along RGB axes for easy input into pre-trained,
+      # color-based models
+      x = tf.tile(x, [1, 1, 1, 3])
     return x
 
 
