@@ -1,5 +1,8 @@
+import code
+
 import tensorflow as tf
 import tensorflow_addons as tfa
+import matplotlib.pyplot as plt
 
 
 def gaussian_k(height, width, y, x, sigma, normalized=True):
@@ -30,6 +33,7 @@ class DifferentiableAugment:
   from 0 to 15. For curriculum learning, the difficulty can be increased slowly
   over time.
   """
+
 
   @staticmethod
   def static(imgs, DIFFICULTY):
@@ -91,27 +95,9 @@ class DifferentiableAugment:
     average_img_dim = (img_shape[0] + img_shape[1]) / 2
     minval = int(round(max_shift_percent * average_img_dim * -1))
     maxval = int(round(max_shift_percent * average_img_dim))
-    shifts = tf.random.uniform([2], minval=minval, maxval=maxval + 1, dtype=tf.int32)
-    shift_x = shifts[0]
-    shift_y = shifts[1]
-    if shift_x != 0:
-      zeros = tf.zeros((batch_size, img_shape[0], abs(shift_x), img_shape[2]), dtype=tf.float32)
-      if shift_x > 0: # shift right
-        chunk = imgs[:, :, :-shift_x]
-        imgs = tf.concat((zeros, chunk), axis=2)
-      else: # shift left
-        shift_x = abs(shift_x)
-        chunk = imgs[:, :, shift_x:]
-        imgs = tf.concat((chunk, zeros), axis=2)
-    if shift_y != 0:
-      zeros = tf.zeros((batch_size, abs(shift_y), img_shape[1], img_shape[2]), dtype=tf.float32)
-      if shift_y > 0: # shift up
-        chunk = imgs[:, :-shift_y]
-        imgs = tf.concat((zeros, chunk), axis=1)
-      else: # shift down
-        shift_y = abs(shift_y)
-        chunk = imgs[:, shift_y:]
-        imgs = tf.concat((chunk, zeros), axis=1)
+    shifts = tf.random.uniform([imgs.shape[0], 2], minval=minval, maxval=maxval + 1, dtype=tf.int32)
+    shifts = tf.cast(shifts, tf.float32)
+    imgs = tfa.image.translate(imgs, shifts, interpolation='BILINEAR')
     return imgs
   
 
@@ -149,11 +135,10 @@ class DifferentiableAugment:
   
 
   @staticmethod
-  def rotate(imgs, DIFFICULTY):
+  def fractional_rotate(imgs, DIFFICULTY):
     """Rotate images, each with a unique number of radians selected uniformly
     from a range.
-    Note: this function will not run very quickly on TPUs because the rotation
-    is implemented as C++ code that runs on the CPU.
+    Note: this function is not TPU-friendly
     """
     pi = 3.14159265
     RADIANS = {
@@ -223,13 +208,73 @@ class DifferentiableAugment:
     return imgs
 
 
+  @staticmethod
+  def random_scale(imgs, DIFFICULTY):
+    """Randomly scales all of the values in each channel
+    """
+    MULTIPLY_SCALES = {
+      0: [1, 1],
+      1: [0.9, 1.1],
+      2: [0.85, 1.15],
+      3: [0.8, 1.2],
+      4: [0.75, 1.25],
+      5: [0.7, 1.3],
+      6: [0.65, 1.325],
+      7: [0.6, 1.35],
+      8: [0.55, 1.375],
+      9: [0.50, 1.4],
+      10: [0.48, 1.42],
+      11: [0.46, 1.44],
+      12: [0.44, 1.46],
+      13: [0.42, 1.48],
+      14: [0.4, 1.5],
+      15: [0.4, 1.5],
+    }
+    channels = imgs.shape[-1]
+    minscale, maxscale = MULTIPLY_SCALES[DIFFICULTY]
+    scales = tf.random.uniform([channels], minval=minscale, maxval=maxscale)
+    imgs = imgs * scales
+    return imgs
+
+
+  @staticmethod
+  def cutout(imgs, DIFFICULTY):
+    MASK_PERCENT = {
+      0: 0.00,
+      1: 0.075,
+      2: 0.1,
+      3: 0.125,
+      4: 0.15,
+      5: 0.175,
+      6: 0.2,
+      7: 0.225,
+      8: 0.25,
+      9: 0.275,
+      10: 0.3,
+      11: 0.325,
+      12: 0.34,
+      13: 0.36,
+      14: 0.38,
+      15: 0.4,
+    }
+    y_size = tf.cast(imgs.shape[1] * MASK_PERCENT[DIFFICULTY] / 2, tf.int32) * 2
+    x_size = tf.cast(imgs.shape[2] * MASK_PERCENT[DIFFICULTY] / 2, tf.int32) * 2
+    for _ in range(2):
+      imgs = tfa.image.random_cutout(
+        imgs,
+        mask_size=[y_size, x_size]
+      )
+    return imgs
+
+
 def get_noisy_channel(func_names=[
     'static',
     'blur',
+    'cutout',
+    'random_scale',
+    'translate',
     'resize',
-    # 'translate',
-    # TODO: translate causes a problem with gradients!
-    'rotate'
+    'fractional_rotate',
   ]):
   """Return a function that adds noise to a batch of images, conditioned on a
   difficulty value.
@@ -248,3 +293,23 @@ def get_noisy_channel(func_names=[
     assert func_name in dir(DifferentiableAugment), f"Function '{func_name}' doesn't exist"
     funcs.append(getattr(DifferentiableAugment, func_name))
   return lambda images, DIFFICULTY: noise_pipeline(images, funcs, DIFFICULTY)
+
+
+if __name__ == "__main__":
+  import os
+  os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+  os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used
+
+  imgs = tf.random.normal([4, 128, 128, 3])
+  channel = get_noisy_channel()
+  for diff in range(16):
+    x = channel(imgs, diff)
+    fig, axes = plt.subplots(2, 2)
+    # scale x to be readable
+    x = x - tf.math.reduce_min(x)
+    x = x / tf.math.reduce_max(x)
+    axes[0][0].imshow(x[0])
+    axes[0][1].imshow(x[1])
+    axes[1][0].imshow(x[2])
+    axes[1][1].imshow(x[3])
+    plt.savefig(f"noise_{diff}.png")
