@@ -44,17 +44,17 @@ class CPPN(tf.keras.Model):
     r = tf.sqrt(tf.math.reduce_sum(dists ** 2, axis=-1))[..., tf.newaxis]
     loc = tf.concat([coords, r], axis=-1)
     loc = self.loc_embed(loc)
+    # loc = tfa.activations.gelu(loc)
     loc = tf.tile(loc[tf.newaxis], [batch_size, 1, 1, 1])
 
     # concatenate Z to locations
-    Z = self.Z_embed(Z)
     Z = tf.tile(Z[:, tf.newaxis, tf.newaxis], [1, self.y_dim, self.x_dim, 1])
     x = tf.concat([loc, Z], axis=-1)
     x = self.in_w(x)
 
     # encode
     for layer in self.ws:
-      start_x = tf.nn.dropout(x, 0.1)
+      start_x = x
       x = layer(x)
       x = x + start_x
       x = tfa.activations.gelu(x)
@@ -69,6 +69,12 @@ ImageDecoder = tf.keras.applications.InceptionV3(
     weights="imagenet",
     input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
 )
+
+# ImageDecoder = tf.keras.applications.ResNet50V2(
+#     include_top=False,
+#     weights="imagenet",
+#     input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+# )
 
 if __name__ == "__main__":
   cppn = CPPN(64, 64, 512, 3)
