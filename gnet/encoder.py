@@ -10,6 +10,8 @@ from typing import Dict
 import tensorflow as tf
 import tensorflow_addons as tfa
 
+from ml_utils import dense_regularization
+
 
 class NodeFeatureEmbed(tf.keras.layers.Layer):
   """Aggregate and embed node features before doing global attention between
@@ -17,11 +19,11 @@ class NodeFeatureEmbed(tf.keras.layers.Layer):
   """
   def __init__(self, hidden_size:int, node_feature_specs:Dict[str, int]):
     super(NodeFeatureEmbed, self).__init__()
-    self.nf_w = {name: tf.keras.layers.Dense(hidden_size) for name in
+    self.nf_w = {name: tf.keras.layers.Dense(hidden_size, **dense_regularization) for name in
       node_feature_specs.keys()}
-    self.w = tf.keras.layers.Dense(hidden_size)
+    self.w = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
-    self.w_out = tf.keras.layers.Dense(hidden_size)
+    self.w_out = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
 
 
@@ -74,17 +76,17 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     self.hidden_size = hidden_size
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
     # local
-    self.local_q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.local_k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.local_v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.local_q_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.local_k_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.local_v_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
     # global
-    self.global_q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.global_k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.global_v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.global_q_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.global_k_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.global_v_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
     # out
-    self.w_out_1 = tf.keras.layers.Dense(hidden_size)
+    self.w_out_1 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
-    self.w_out_2 = tf.keras.layers.Dense(hidden_size)
+    self.w_out_2 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
   
   def call(self, inputs):

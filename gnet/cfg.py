@@ -7,17 +7,20 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 2,
   'max_num_values': 3,
-  'num_samples': 2_000,
+  'num_samples': 15_000,
 
   # graph models
   'hidden_size': 512,
   'encoder_attention_layers': 4,
   'decoder_attention_layers': 4,
   'num_heads': 6,
+  'initial_lr': 0.0005,
+  'use_exponential_rate_scheduler': True,
+
   # vision models
   'VISION': False,
-  'y_dim': 96,
-  'x_dim': 96,
+  'y_dim': 128,
+  'x_dim': 128,
   'G_hidden_size': 128,
   'G_num_layers': 6,
   'cppn_loc_embed_dim': 128,
@@ -27,17 +30,16 @@ CFG = {
   'discriminator_lr': 0.0001,
 
   # training
-  'batch_size': 32,
+  'batch_size': 64,
   'epochs': 3_000,
   'mse_loss_only': False,
-  'initial_lr': 0.0005,
-  'use_exponential_rate_scheduler': True,
+  'label_smoothing': 0.00,
 
   # checkpointing and saving
   # set to NOLOG to prevent logging
-  'run_name': 'loaded_NOLOG',
-  # set to None if starting with a fresh model
-  # 'load_name': 'NOLOG',
-  'load_name': 'NOLOG',
+  'run_name': 'graph_pretrain',
+  # 'run_name': 'full_1',
+  'load_name': None,
+  # 'load_name': 'graph_pretrain',
 }
 RESULTS = {}

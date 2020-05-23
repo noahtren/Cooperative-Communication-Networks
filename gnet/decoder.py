@@ -8,6 +8,9 @@ import code
 import tensorflow as tf
 import tensorflow_addons as tfa
 
+from ml_utils import dense_regularization
+
+
 class GlobalAttention(tf.keras.layers.Layer):
   def __init__(self, num_heads:int, hidden_size:int):
     super(GlobalAttention, self).__init__()
@@ -15,13 +18,13 @@ class GlobalAttention(tf.keras.layers.Layer):
     self.hidden_size = hidden_size
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))
     # global attention
-    self.q_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.k_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
-    self.v_ws = [tf.keras.layers.Dense(hidden_size) for _ in range(num_heads)]
+    self.q_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.k_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
+    self.v_ws = [tf.keras.layers.Dense(hidden_size, **dense_regularization) for _ in range(num_heads)]
     # out
-    self.w_out_1 = tf.keras.layers.Dense(hidden_size)
+    self.w_out_1 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
-    self.w_out_2 = tf.keras.layers.Dense(hidden_size)
+    self.w_out_2 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
 
 
@@ -80,11 +83,11 @@ class GraphDecoder(tf.keras.Model):
     super(GraphDecoder, self).__init__()
     self.max_nodes = max_nodes
 
-    self.expand_w = tf.keras.layers.Dense(max_nodes * hidden_size)
+    self.expand_w = tf.keras.layers.Dense(max_nodes * hidden_size, **dense_regularization)
     self.global_attns = [GlobalAttention(num_heads, hidden_size) for _ in range(decoder_attention_layers)]
 
-    self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency')    
-    self.nf_w = {name: tf.keras.layers.Dense(size + 1, name=f'feature_{name}') for
+    self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency', **dense_regularization)
+    self.nf_w = {name: tf.keras.layers.Dense(size + 1, name=f'feature_{name}', **dense_regularization) for
       name, size in node_feature_specs.items()}
 
     self.scale = 1. / tf.math.sqrt(tf.cast(hidden_size, tf.float32))

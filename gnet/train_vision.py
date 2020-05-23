@@ -9,7 +9,7 @@ import random
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from vision import CPPN, ImageDecoder
+from vision import CPPN, ImageDecoder, modify_decoder
 from cfg import CFG
 from aug import get_noisy_channel
 
@@ -79,27 +79,10 @@ def train_step(models, symbols, noisy_channel, difficulty, e_i):
   return batch_loss, acc
 
 
-def make_decoder_classifier(decoder):
-  """Takes an image decoder and adds a final classification
-  layer with as many output classes as the number of symbols
-  in the toy problem.
-  """
-  inputs = decoder.inputs
-  x = decoder.outputs[0]
-  scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
-  x = tf.keras.layers.GlobalAveragePooling2D()(x)
-  x = tf.keras.layers.Dense(NUM_SYMBOLS)(x)
-  x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
-  x = tf.keras.layers.Activation(tf.nn.softmax)(x)
-  model = tf.keras.Model(inputs=inputs, outputs=[x])
-  return model
-
-
 if __name__ == "__main__":
   data, samples = make_data()
   generator = CPPN(**CFG)
-  discriminator = ImageDecoder
-  discriminator = make_decoder_classifier(discriminator)
+  discriminator = modify_decoder(ImageDecoder, just_GAP=False)
   models = {
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],

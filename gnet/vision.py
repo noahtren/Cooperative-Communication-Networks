@@ -29,10 +29,12 @@ class CPPN(tf.keras.Model):
     self.x_dim = x_dim
     self.spatial_scale = 1 / max([y_dim, x_dim])
     self.output_scale = 1. / tf.math.sqrt(tf.cast(G_hidden_size, tf.float32))
-
+    self.norm_1 = tf.keras.layers.LayerNormalization()
+    self.norm_2 = tf.keras.layers.LayerNormalization()
 
   def call(self, Z):
     batch_size = Z.shape[0]
+    Z = self.norm_1(Z)
 
     # get pixel locations and embed pixels
     coords = tf.where(tf.ones((self.y_dim, self.x_dim)))
@@ -59,7 +61,9 @@ class CPPN(tf.keras.Model):
       x = x + start_x
       x = tfa.activations.gelu(x)
 
+    x = self.norm_2(x)
     x = self.out_w(x)
+    x = self.output_scale * x
     x = tf.nn.tanh(x)
     if x.shape[-1] == 1:
       # Copy grayscale along RGB axes for easy input into pre-trained,
@@ -68,11 +72,29 @@ class CPPN(tf.keras.Model):
     return x
 
 
+def modify_decoder(decoder, just_GAP=True):
+  """Takes an image decoder and adds a final classification
+  layer with as many output classes as the number of symbols
+  in the toy problem.
+  """
+  inputs = decoder.inputs
+  x = decoder.outputs[0]
+  x = tf.keras.layers.GlobalAveragePooling2D()(x)
+  if not just_GAP:
+    scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
+    x = tf.keras.layers.Dense(NUM_SYMBOLS)(x)
+    x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
+    x = tf.keras.layers.Activation(tf.nn.softmax)(x)
+  model = tf.keras.Model(inputs=inputs, outputs=[x])
+  return model
+
+
 ImageDecoder = tf.keras.applications.InceptionV3(
-    include_top=False,
-    weights="imagenet",
-    input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+  include_top=False,
+  weights="imagenet",
+  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
 )
+
 
 # ImageDecoder = tf.keras.applications.ResNet50V2(
 #     include_top=False,

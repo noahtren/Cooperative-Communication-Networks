@@ -24,13 +24,13 @@ def loss_fn(adj, nf, possible_adjs, possible_nfs):
 
   # calculate losses along last axis (per node)
   lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
-    lambda true, pred: tf.keras.losses.binary_crossentropy(true, pred, label_smoothing=0.00)
+    lambda true, pred: tf.keras.losses.binary_crossentropy(true, pred, label_smoothing=CFG['label_smoothing'])
 
   adj_label = tf.tile(adj[:, tf.newaxis], [1, permute_dim, 1, 1])
   loss = lfn(adj_label, possible_adjs)
 
   lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
-    lambda true, pred: tf.keras.losses.categorical_crossentropy(true, pred, label_smoothing=0.00)
+    lambda true, pred: tf.keras.losses.categorical_crossentropy(true, pred, label_smoothing=CFG['label_smoothing'])
   for name, pred_nf in possible_nfs.items():
     nf_label = tf.tile(nf[name][:, tf.newaxis], [1, permute_dim, 1, 1])
     loss += lfn(nf_label, pred_nf)
@@ -43,7 +43,7 @@ def loss_fn(adj, nf, possible_adjs, possible_nfs):
   min_idxs = tf.stack([tf.range(min_idxs.shape[0], dtype=tf.int64), min_idxs], axis=1)
   loss = tf.gather_nd(loss, min_idxs)
 
-  # calculate accuracy metrics
+  # calculate metrics
   selected_adjs = tf.gather_nd(possible_adjs, min_idxs)
   acc['adj'] = tf.math.reduce_mean(
     tf.keras.metrics.binary_accuracy(tf.cast(adj, tf.float32), selected_adjs)
