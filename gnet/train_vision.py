@@ -79,10 +79,10 @@ def train_step(models, symbols, noisy_channel, difficulty, e_i):
   return batch_loss, acc
 
 
-if __name__ == "__main__":
+def main():
   data, samples = make_data()
   generator = CPPN(**CFG)
-  discriminator = modify_decoder(ImageDecoder, just_GAP=False)
+  discriminator = modify_decoder(ImageDecoder, just_GAP=False, NUM_SYMBOLS=NUM_SYMBOLS)
   models = {
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],
@@ -120,3 +120,7 @@ if __name__ == "__main__":
       axes[1][0].imshow(sample_imgs[2])
       axes[1][1].imshow(sample_imgs[3])
       plt.savefig(f"{e_i}.png")
+
+
+if __name__ == "__main__":
+  main()

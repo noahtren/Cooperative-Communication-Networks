@@ -34,6 +34,9 @@ from ml_utils import dense_regularization
 # this is something I would like to add as soon as possible. First I need to
 # prove that I can get convergence with the full pipeline.
 
+# TODO: experiment with other vision-only pipelines and see if a CPPN is what
+# I truly want -- or see if there are more powerful CPPNs that I could use.
+
 
 """Documentation of hyperparameters
 

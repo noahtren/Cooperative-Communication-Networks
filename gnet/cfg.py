@@ -1,4 +1,4 @@
-
+VISION = True
 CFG = {
   # dataset
   'max_nodes': 5,
@@ -14,32 +14,32 @@ CFG = {
   'encoder_attention_layers': 4,
   'decoder_attention_layers': 4,
   'num_heads': 6,
-  'initial_lr': 0.00005,
+  # the inline if statement is a helpful pattern
+  'initial_lr': 0.00005 if VISION else 0.0005,
   'use_exponential_rate_scheduler': True,
 
   # vision models
-  'VISION': True,
-  'y_dim': 128,
-  'x_dim': 128,
+  'VISION': VISION,
+  'y_dim': 96,
+  'x_dim': 96,
   'G_hidden_size': 128,
   'G_num_layers': 6,
   'cppn_loc_embed_dim': 128,
   'cppn_Z_embed_dim': 128,
   'c_out': 3,
-  'generator_lr': 0.0001,
-  'discriminator_lr': 0.0001,
+  'generator_lr': 0.0002,
+  'discriminator_lr': 0.0002,
 
   # training
   'batch_size': 16,
   'epochs': 3_000,
   'mse_loss_only': False,
-  'label_smoothing': 0.00,
+  'label_smoothing': 0.01 if VISION else 0.0,
 
-  # checkpointing and saving
-  # (set to NOLOG to prevent logging)
+  # checkpointing and saving (set to NOLOG to prevent logging)
+  'run_name': 'full_3',
   # 'run_name': 'graph_pretrain',
-  'run_name': 'full_1',
-  # 'load_name': None,
   'load_name': 'graph_pretrain',
+  # 'load_name': None,
 }
 RESULTS = {}

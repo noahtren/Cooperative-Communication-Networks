@@ -5,10 +5,6 @@ import tensorflow_addons as tfa
 from cfg import CFG
 
 
-# NOTE: the inception decoder requires an input with 3 channels.
-# if I really want to do grayscale, I can still start with
-# pre-trained weights, but just tile the output of the CPPN
-
 class CPPN(tf.keras.Model):
   """Compositional Pattern-Producing Network
 
@@ -66,13 +62,12 @@ class CPPN(tf.keras.Model):
     x = self.output_scale * x
     x = tf.nn.tanh(x)
     if x.shape[-1] == 1:
-      # Copy grayscale along RGB axes for easy input into pre-trained,
-      # color-based models
+      # Copy grayscale along RGB axes for easy input into pre-trained, color-based models
       x = tf.tile(x, [1, 1, 1, 3])
     return x
 
 
-def modify_decoder(decoder, just_GAP=True):
+def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
   """Takes an image decoder and adds a final classification
   layer with as many output classes as the number of symbols
   in the toy problem.
