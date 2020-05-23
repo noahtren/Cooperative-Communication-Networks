@@ -4,6 +4,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from cfg import CFG
 
+from ml_utils import dense_regularization
+
 
 class CPPN(tf.keras.Model):
   """Compositional Pattern-Producing Network
@@ -16,11 +18,11 @@ class CPPN(tf.keras.Model):
                cppn_loc_embed_dim, cppn_Z_embed_dim:int, c_out:int=1,
                **kwargs):
     super(CPPN, self).__init__()
-    self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim)
-    self.Z_embed = tf.keras.layers.Dense(cppn_Z_embed_dim)
-    self.in_w = tf.keras.layers.Dense(G_hidden_size)
-    self.ws = [tf.keras.layers.Dense(G_hidden_size) for _ in range(G_num_layers)]
-    self.out_w = tf.keras.layers.Dense(c_out)
+    self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim, **dense_regularization)
+    self.Z_embed = tf.keras.layers.Dense(cppn_Z_embed_dim, **dense_regularization)
+    self.in_w = tf.keras.layers.Dense(G_hidden_size, **dense_regularization)
+    self.ws = [tf.keras.layers.Dense(G_hidden_size, **dense_regularization) for _ in range(G_num_layers)]
+    self.out_w = tf.keras.layers.Dense(c_out, **dense_regularization)
     self.y_dim = y_dim
     self.x_dim = x_dim
     self.spatial_scale = 1 / max([y_dim, x_dim])
@@ -59,7 +61,6 @@ class CPPN(tf.keras.Model):
 
     x = self.norm_2(x)
     x = self.out_w(x)
-    x = self.output_scale * x
     x = tf.nn.tanh(x)
     if x.shape[-1] == 1:
       # Copy grayscale along RGB axes for easy input into pre-trained, color-based models
@@ -77,21 +78,28 @@ def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
   x = tf.keras.layers.GlobalAveragePooling2D()(x)
   if not just_GAP:
     scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
-    x = tf.keras.layers.Dense(NUM_SYMBOLS)(x)
+    x = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)(x)
     x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
     x = tf.keras.layers.Activation(tf.nn.softmax)(x)
   model = tf.keras.Model(inputs=inputs, outputs=[x])
   return model
 
 
-ImageDecoder = tf.keras.applications.InceptionV3(
-  include_top=False,
-  weights="imagenet",
-  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+# ImageDecoder = tf.keras.applications.InceptionV3(
+#   include_top=False,
+#   weights="imagenet",
+#   input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+# )
+
+
+ImageDecoder = tf.keras.applications.ResNet50V2(
+    include_top=False,
+    weights="imagenet",
+    input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
 )
 
 
-# ImageDecoder = tf.keras.applications.ResNet50V2(
+# ImageDecoder = tf.keras.applications.EfficientNetB0(
 #     include_top=False,
 #     weights="imagenet",
 #     input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),

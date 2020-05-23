@@ -13,7 +13,7 @@ from decoder import GraphDecoder
 from vision import CPPN, ImageDecoder, modify_decoder
 from graph_match import minimum_loss_permutation
 from cfg import CFG
-from ml_utils import dense_regularization
+from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
 
 
 # TODO: a way to evaluate, at least statistically, how much the training and
@@ -111,21 +111,6 @@ def train_step(models, batch, test=False):
   return batch_loss, acc, reg_loss
 
 
-def update_data_dict(data_dict, batch_dict):
-  for name in batch_dict.keys():
-    if name not in data_dict:
-      data_dict[name] = batch_dict[name]
-    else:
-      data_dict[name] += batch_dict[name]
-  return data_dict
-
-
-def normalize_data_dict(data_dict, num_batches):
-  for name, value in data_dict.items():
-    data_dict[name] = (value / num_batches).numpy().item()
-  return data_dict
-
-
 def save_ckpts(models, log_dir, ckpt_name:str):
   for model_name, model in models.items():
     model_path = os.path.join(log_dir, model_name, ckpt_name)
@@ -157,7 +142,7 @@ def load_ckpts(models, load_name, ckpt_name='best'):
     if os.path.exists(model_path):
       model.load_weights(model_path)
       print(f"Loaded weights for {model_name}")
-  if CFG['VISION']:
+  if CFG['VISION'] and 'decoder' in models:
     models['decoder'][0].expand_w = \
       tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
     print("Overrode decoder input layer (for vision compatibility)")

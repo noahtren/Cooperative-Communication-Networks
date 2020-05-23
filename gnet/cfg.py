@@ -1,4 +1,5 @@
 VISION = True
+JUST_VISION = True
 CFG = {
   # dataset
   'max_nodes': 5,
@@ -7,7 +8,7 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 2,
   'max_num_values': 3,
-  'num_samples': 15_000,
+  'num_samples': 1_000 if JUST_VISION else 15_000,
 
   # graph models
   'hidden_size': 512,
@@ -20,8 +21,8 @@ CFG = {
 
   # vision models
   'VISION': VISION,
-  'y_dim': 96,
-  'x_dim': 96,
+  'y_dim': 128,
+  'x_dim': 128,
   'G_hidden_size': 128,
   'G_num_layers': 6,
   'cppn_loc_embed_dim': 128,
@@ -31,15 +32,16 @@ CFG = {
   'discriminator_lr': 0.0002,
 
   # training
-  'batch_size': 16,
+  'batch_size': 24,
   'epochs': 3_000,
   'mse_loss_only': False,
-  'label_smoothing': 0.01 if VISION else 0.0,
+  'label_smoothing': 0.001 if VISION else 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'full_3',
+  'run_name': 'vision_only_5',
   # 'run_name': 'graph_pretrain',
-  'load_name': 'graph_pretrain',
+  'load_name': 'vision_only_4',
+  # 'load_name': 'graph_pretrain',
   # 'load_name': None,
 }
 RESULTS = {}

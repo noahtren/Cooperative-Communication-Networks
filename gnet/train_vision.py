@@ -5,6 +5,7 @@ problem of reconstructing simple one-hot vectors.
 
 import code
 import random
+import json
 
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -12,8 +13,11 @@ import matplotlib.pyplot as plt
 from vision import CPPN, ImageDecoder, modify_decoder
 from cfg import CFG
 from aug import get_noisy_channel
+from main import save_ckpts, load_ckpts
+from ml_utils import shuffle_together, update_data_dict, normalize_data_dict
 
-NUM_SYMBOLS = 64
+
+NUM_SYMBOLS = 128
 
 
 """Hyperparameters
@@ -43,6 +47,15 @@ images.
 TODO: I would like to learn a bit more about optimizer scheduling,
 especially things like warmup periods, which seem important so that
 exploding gradients don't nuke the results.
+
+CONSIDER: starting with a pretrained generator.
+
+In general, I need to explore the stricty visual space quite a bit more
+before trying to adapt it to the graph problem. It's definitely the limiting
+factor right now.
+
+PROBLEM: compilation times take forever, I think it is for compiling the
+inception architecture.
 """
 
 
@@ -65,21 +78,33 @@ def update_difficulty(difficulty, epoch_loss, epoch_acc):
 
 @tf.function
 def train_step(models, symbols, noisy_channel, difficulty, e_i):
+  reg_loss = {}
   with tf.GradientTape(persistent=True) as tape:
     imgs = models['generator'][0](symbols)
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
-    batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=0.01)
+    batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=0.001)
+    for name, (model, _) in models.items():
+      reg_loss[name] = tf.math.reduce_sum(model.losses)
+      batch_loss += reg_loss[name]
     batch_loss = tf.math.reduce_mean(batch_loss)
     acc = tf.keras.metrics.categorical_accuracy(symbols, predictions)
     acc = tf.math.reduce_mean(acc)
   for module, optim in models.values():
     grads = tape.gradient(batch_loss, module.trainable_variables)
     optim.apply_gradients(zip(grads, module.trainable_variables))
-  return batch_loss, acc
+  return batch_loss, acc, reg_loss
+
+
+def dummy_input(models, data):
+  symbols = data[:CFG['batch_size']]
+  imgs = models['generator'][0](symbols)
+  predictions = models['discriminator'][0](imgs)
+
 
 
 def main():
+  # ==================== DATA AND MODELS ====================
   data, samples = make_data()
   generator = CPPN(**CFG)
   discriminator = modify_decoder(ImageDecoder, just_GAP=False, NUM_SYMBOLS=NUM_SYMBOLS)
@@ -87,27 +112,37 @@ def main():
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],
   }
+  dummy_input(models, data)
+  load_ckpts(models, CFG['load_name'], 'latest')
   noisy_channel = get_noisy_channel()
   num_batches = CFG['num_samples'] // CFG['batch_size']
   difficulty = 0
+  # ==================== TRAINING LOOP ====================
   for e_i in range(CFG['epochs']):
     epoch_loss = 0
     acc = 0
-    # TRAIN
+    reg_loss = {}
+    data = shuffle_together(data)[0]
+    # TRAIN ====================
     for b_i in range(num_batches):
       end_b = min([CFG['num_samples'], (b_i + 1) * CFG['batch_size']])
       start_b = end_b - CFG['batch_size']
       batch = data[start_b:end_b]
-      batch_loss, batch_acc = train_step(models, batch, noisy_channel, difficulty, e_i)
+      batch_loss, batch_acc, batch_reg_loss = train_step(models, batch, noisy_channel, difficulty, e_i)
       epoch_loss += batch_loss
       acc += batch_acc
+      update_data_dict(reg_loss, batch_reg_loss)
       print(f"e [{e_i}/{CFG['epochs']}] b [{end_b}/{data.shape[0]}] loss {batch_loss}", end="\r")
     epoch_loss = epoch_loss / num_batches
     acc = acc / num_batches
+    reg_loss = normalize_data_dict(reg_loss, num_batches)
     print(f"EPOCH {e_i} LOSS: {epoch_loss} ACCURACY: {acc}")
+    print(f"Regularizer losses: {json.dumps(reg_loss, indent=4)}")
     difficulty = update_difficulty(difficulty, epoch_loss, acc)
     print(f"DIFFICULTY FOR NEXT EPOCH: {difficulty}")
-    # VISUALIZE
+    # SAVE WEIGHTS ====================
+    save_ckpts(models, f"logs/{CFG['run_name']}", 'latest')
+    # VISUALIZE ====================
     if e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
       sample_idxs = tf.random.uniform([4], 0, NUM_SYMBOLS, tf.int32)
