@@ -21,8 +21,6 @@ from cfg import CFG
 # vision modules into the latent space afterwards. may be easier to learn than
 # doing everything end-to-end from scratch.
 
-# NOTE: training overnight did not work with these parameters
-
 
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                 max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):
@@ -104,6 +102,20 @@ def normalize_acc(acc, num_batches):
   return acc
 
 
+def save_ckpts(models, log_dir, ckpt_name:str):
+  for model_name, model in models.items():
+    model_path = os.path.join(log_dir, model_name, ckpt_name)
+    os.makedirs(model_path, exist_ok=True)
+    model[0].save_weights(os.path.join(model_path, ckpt_name))
+
+
+def load_ckpts(models, load_name, ckpt_name='best'):
+  log_dir = f"logs/{load_name}"
+  for model_name, model in models.items():
+    model_path = os.path.join(log_dir, model_name, ckpt_name)
+    model[0].load_weights(os.path.join(model_path, ckpt_name))
+
+
 if __name__ == "__main__":
   # ==================== DATA AND MODELS ====================
   tr_adj, tr_node_features, tr_node_feature_specs, tr_num_nodes, \
@@ -129,6 +141,8 @@ if __name__ == "__main__":
     discriminator = ImageDecoder
     models['generator'] = [generator, tf.keras.optimizers.Adam(lr)]
     models['discriminator'] = [discriminator, tf.keras.optimizers.Adam(lr)]
+  if CFG['load_name'] is not None:
+    load_ckpts(models, CFG['load_name'])
 
   # ==================== LOGGING ====================
   log_dir = f"logs/{CFG['run_name']}"
@@ -146,6 +160,7 @@ if __name__ == "__main__":
   # ==================== TRAIN LOOP ====================
   tr_num_batches = (tr_adj.shape[0] // CFG['batch_size']) + 1
   test_num_batches = (test_adj.shape[0] // CFG['batch_size']) + 1
+  best_epoch_loss = tf.float32.max
   for e_i in range(CFG['epochs']):
     tr_epoch_loss = 0
     test_epoch_loss = 0
@@ -202,3 +217,8 @@ if __name__ == "__main__":
         tf.summary.scalar('loss', test_epoch_loss, step=e_i)
         for name, metric in test_epoch_acc.items():
           tf.summary.scalar(name, metric, step=e_i)
+    # SAVING CHECKPOINTS
+    # save_ckpts(models, log_dir, str(e_i))
+    if test_epoch_loss < best_epoch_loss:
+      best_epoch_loss = test_epoch_loss
+      save_ckpts(models, log_dir, 'best')

@@ -57,7 +57,7 @@ class GlobalAttention(tf.keras.layers.Layer):
     return x
 
 
-class GraphDecoder(tf.keras.layers.Layer):
+class GraphDecoder(tf.keras.Model):
   def __init__(self, num_heads:int, hidden_size:int, max_nodes:int,
                node_feature_specs:Dict[str, int], decoder_attention_layers:int, **kwargs):
     """Simple graph reconstruction with dense feed-forward neural network based

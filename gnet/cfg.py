@@ -1,12 +1,12 @@
 
 CFG = {
   # dataset
-  'max_nodes': 6,
+  'max_nodes': 5,
   # 5! = 120
   # 6! = 720
   'language_spec': 'arithmetic',
-  'min_num_values': 3,
-  'max_num_values': 4,
+  'min_num_values': 2,
+  'max_num_values': 3,
   'num_samples': 2_000,
 
   # graph models
@@ -15,7 +15,7 @@ CFG = {
   'decoder_attention_layers': 4,
   'num_heads': 6,
   # vision models
-  'VISION': True,
+  'VISION': False,
   'y_dim': 96,
   'x_dim': 96,
   'G_hidden_size': 128,
@@ -35,6 +35,9 @@ CFG = {
 
   # checkpointing and saving
   # set to NOLOG to prevent logging
-  'run_name': 'NOLOG'
+  'run_name': 'loaded_NOLOG',
+  # set to None if starting with a fresh model
+  # 'load_name': 'NOLOG',
+  'load_name': 'NOLOG',
 }
 RESULTS = {}
