@@ -23,6 +23,17 @@ from ml_utils import dense_regularization
 # vision modules into the latent space afterwards. may be easier to learn than
 # doing everything end-to-end from scratch.
 
+# TRICK: when starting with a pretrained, regularized graph autoencoder, set
+# the learning rate of the autoencoder to something far lower than the visual
+# modules. this encourages the visual element to learn from error while the
+# graph autoencoder components change *less*. It may also be worth considering
+# freezing those weights entirely, but it seems like a bit of flexibility is
+# helpful -- strategic transfer learning.
+
+# NOTE: I have not yet incorporated a noisy channel into the full pipeline.
+# this is something I would like to add as soon as possible. First I need to
+# prove that I can get convergence with the full pipeline.
+
 
 """Documentation of hyperparameters
 

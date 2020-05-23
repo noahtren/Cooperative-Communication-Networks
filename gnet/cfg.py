@@ -14,11 +14,11 @@ CFG = {
   'encoder_attention_layers': 4,
   'decoder_attention_layers': 4,
   'num_heads': 6,
-  'initial_lr': 0.0005,
+  'initial_lr': 0.00005,
   'use_exponential_rate_scheduler': True,
 
   # vision models
-  'VISION': False,
+  'VISION': True,
   'y_dim': 128,
   'x_dim': 128,
   'G_hidden_size': 128,
@@ -30,16 +30,16 @@ CFG = {
   'discriminator_lr': 0.0001,
 
   # training
-  'batch_size': 64,
+  'batch_size': 16,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.00,
 
   # checkpointing and saving
-  # set to NOLOG to prevent logging
-  'run_name': 'graph_pretrain',
-  # 'run_name': 'full_1',
-  'load_name': None,
-  # 'load_name': 'graph_pretrain',
+  # (set to NOLOG to prevent logging)
+  # 'run_name': 'graph_pretrain',
+  'run_name': 'full_1',
+  # 'load_name': None,
+  'load_name': 'graph_pretrain',
 }
 RESULTS = {}
