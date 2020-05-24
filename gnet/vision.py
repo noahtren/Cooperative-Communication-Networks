@@ -1,3 +1,8 @@
+# import os
+# os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used
+
+
 import code
 
 import tensorflow as tf
@@ -36,7 +41,8 @@ class CPPN(tf.keras.Model):
 
     # get pixel locations and embed pixels
     coords = tf.where(tf.ones((self.y_dim, self.x_dim)))
-    coords = tf.cast(tf.reshape(coords, (self.y_dim, self.x_dim, 2)), tf.float32)
+    coord_ints = tf.reshape(coords, (self.y_dim, self.x_dim, 2))
+    coords = tf.cast(coord_ints, tf.float32)
     coords = tf.stack([coords[:, :, 0] * self.spatial_scale,
                        coords[:, :, 1] * self.spatial_scale], axis=-1)
     dists = tf.stack([coords[:, :, 0] - 0.5,
@@ -44,7 +50,7 @@ class CPPN(tf.keras.Model):
     r = tf.sqrt(tf.math.reduce_sum(dists ** 2, axis=-1))[..., tf.newaxis]
     loc = tf.concat([coords, r], axis=-1)
     loc = self.loc_embed(loc)
-    # loc = tfa.activations.gelu(loc)
+    loc = tf.nn.swish(loc)
     loc = tf.tile(loc[tf.newaxis], [batch_size, 1, 1, 1])
 
     # concatenate Z to locations
@@ -57,7 +63,7 @@ class CPPN(tf.keras.Model):
       start_x = x
       x = layer(x)
       x = x + start_x
-      x = tfa.activations.gelu(x)
+      x = tf.nn.swish(x)
 
     x = self.norm_2(x)
     x = self.out_w(x)
@@ -85,27 +91,53 @@ def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
   return model
 
 
-# ImageDecoder = tf.keras.applications.InceptionV3(
-#   include_top=False,
-#   weights="imagenet",
-#   input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
-# )
-
-
-ImageDecoder = tf.keras.applications.ResNet50V2(
-    include_top=False,
-    weights="imagenet",
-    input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+DISC_MODEL = 'ResNet50V2'
+ImageDecoder = None
+Perceptor = None
+PerceptorLayerName = None
+ModelFunc = None
+if DISC_MODEL == 'Xception':
+  ModelFunc = tf.keras.applications.Xception
+  PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
+  # PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
+elif DISC_MODEL == 'ResNet50V2':
+  ModelFunc = tf.keras.applications.ResNet50V2
+  PerceptorLayerName = 'conv2_block2_out' # 4x downscale
+  # PerceptorLayerName = 'conv3_block3_out' # 8x downscale
+  
+ImageDecoder = ModelFunc(
+  include_top=False,
+  weights="imagenet",
+  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
 )
+Perceptor = ModelFunc(
+  include_top=False,
+  weights="imagenet",
+  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+)
+# PerceptorLayer = Perceptor.get_layer(PerceptorLayerName)
+# Perceptor = tf.keras.Model(inputs=Perceptor.inputs, outputs=[PerceptorLayer.output])
 
 
-# ImageDecoder = tf.keras.applications.EfficientNetB0(
-#     include_top=False,
-#     weights="imagenet",
-#     input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
-# )
+def perceptual_loss(imgs, max_pairs=100):
+  """Returns a negative value, where higher magnitudes describe further distances.
+  This is to encourage samples to be perceptually more distant from each other.
+  i.e., they are repelled from each other.
+  """
+  num_pairs = min([imgs.shape[0] * imgs.shape[0], max_pairs])
+  pair_idxs = tf.where(tf.ones((imgs.shape[0], imgs.shape[0])))
+  use_pair_idxs = tf.random.uniform([num_pairs], minval=0, maxval=num_pairs, dtype=tf.int32)
+  pair_idxs = tf.gather(pair_idxs, use_pair_idxs)
+
+  features = Perceptor(imgs)
+  feature_pairs = tf.gather(features, pair_idxs)
+  diffs = feature_pairs[:, 0] - feature_pairs[:, 1]
+  diffs = tf.math.reduce_mean(tf.abs(diffs), axis=[1, 2, 3])
+  repel_loss = tf.math.reduce_mean(diffs) * -2.
+  return repel_loss
+
 
 if __name__ == "__main__":
-  cppn = CPPN(64, 64, 512, 3)
-  Z = tf.random.normal((8, 512))
-  img = cppn(Z)
+  # ex = tf.random.normal([8, 64, 64, 3])
+  # perceptual_loss(ex)
+  pass

@@ -30,13 +30,11 @@ from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
 # freezing those weights entirely, but it seems like a bit of flexibility is
 # helpful -- strategic transfer learning.
 
-# NOTE: I have not yet incorporated a noisy channel into the full pipeline.
-# this is something I would like to add as soon as possible. First I need to
-# prove that I can get convergence with the full pipeline.
-
 # TODO: experiment with other vision-only pipelines and see if a CPPN is what
 # I truly want -- or see if there are more powerful CPPNs that I could use.
 
+
+# TODO: see how small I can make these models
 
 """Documentation of hyperparameters
 

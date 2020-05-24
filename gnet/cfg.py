@@ -8,7 +8,7 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 2,
   'max_num_values': 3,
-  'num_samples': 1_000 if JUST_VISION else 15_000,
+  'num_samples': 5_000 if JUST_VISION else 15_000,
 
   # graph models
   'hidden_size': 512,
@@ -21,27 +21,27 @@ CFG = {
 
   # vision models
   'VISION': VISION,
-  'y_dim': 128,
-  'x_dim': 128,
+  'y_dim': 72,
+  'x_dim': 72,
   'G_hidden_size': 128,
-  'G_num_layers': 6,
-  'cppn_loc_embed_dim': 128,
-  'cppn_Z_embed_dim': 128,
-  'c_out': 3,
-  'generator_lr': 0.0002,
-  'discriminator_lr': 0.0002,
+  'G_num_layers': 5,
+  'cppn_loc_embed_dim': 32,
+  'cppn_Z_embed_dim': 64,
+  'c_out': 1,
+  'generator_lr': 0.0005,
+  'discriminator_lr': 0.0005,
 
   # training
-  'batch_size': 24,
+  'batch_size': 72,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.001 if VISION else 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'vision_only_5',
+  'run_name': 'perceptual_4',
   # 'run_name': 'graph_pretrain',
-  'load_name': 'vision_only_4',
+  # 'load_name': 'vision_only_5',
   # 'load_name': 'graph_pretrain',
-  # 'load_name': None,
+  'load_name': None,
 }
 RESULTS = {}

@@ -10,14 +10,14 @@ import json
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from vision import CPPN, ImageDecoder, modify_decoder
+from vision import CPPN, ImageDecoder, modify_decoder, perceptual_loss
 from cfg import CFG
 from aug import get_noisy_channel
 from main import save_ckpts, load_ckpts
 from ml_utils import shuffle_together, update_data_dict, normalize_data_dict
 
 
-NUM_SYMBOLS = 128
+NUM_SYMBOLS = 512
 
 
 """Hyperparameters
@@ -54,8 +54,11 @@ In general, I need to explore the stricty visual space quite a bit more
 before trying to adapt it to the graph problem. It's definitely the limiting
 factor right now.
 
-PROBLEM: compilation times take forever, I think it is for compiling the
+PROBLEM: compilation times take a long time, I think it is for compiling the
 inception architecture.
+
+NOTE: perceptual loss is quite nice and works pretty well, I can use the same
+starting pretrained model for the discrminator and the perceptual loss model.
 """
 
 
@@ -80,10 +83,14 @@ def update_difficulty(difficulty, epoch_loss, epoch_acc):
 def train_step(models, symbols, noisy_channel, difficulty, e_i):
   reg_loss = {}
   with tf.GradientTape(persistent=True) as tape:
+    batch_loss = 0
     imgs = models['generator'][0](symbols)
+    repel_loss = perceptual_loss(imgs)
+    reg_loss['perceptual'] = repel_loss
+    batch_loss += repel_loss
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
-    batch_loss = tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=0.001)
+    batch_loss += tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=CFG['label_smoothing'])
     for name, (model, _) in models.items():
       reg_loss[name] = tf.math.reduce_sum(model.losses)
       batch_loss += reg_loss[name]
@@ -113,7 +120,8 @@ def main():
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],
   }
   dummy_input(models, data)
-  load_ckpts(models, CFG['load_name'], 'latest')
+  if CFG['load_name'] is not None:
+    load_ckpts(models, CFG['load_name'], 'latest')
   noisy_channel = get_noisy_channel()
   num_batches = CFG['num_samples'] // CFG['batch_size']
   difficulty = 0
@@ -145,7 +153,7 @@ def main():
     # VISUALIZE ====================
     if e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
-      sample_idxs = tf.random.uniform([4], 0, NUM_SYMBOLS, tf.int32)
+      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, NUM_SYMBOLS, tf.int32)
       these_samples = tf.gather(samples, sample_idxs)
       sample_imgs = generator(these_samples)
       # scale tanh to visual range

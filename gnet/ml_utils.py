@@ -94,7 +94,7 @@ def create_optimizer(init_lr, num_train_steps, num_warmup_steps):
 
 
 dense_regularization = {
-  'kernel_regularizer': tf.keras.regularizers.l1_l2(l1=1e-5, l2=1e-4),
-  'bias_regularizer': tf.keras.regularizers.l2(1e-4),
-  'activity_regularizer': tf.keras.regularizers.l2(1e-5)
+  'kernel_regularizer': tf.keras.regularizers.l2(5e-5),
+  'bias_regularizer': tf.keras.regularizers.l2(5e-5),
+  # 'activity_regularizer': tf.keras.regularizers.l2(5e-6)
 }
