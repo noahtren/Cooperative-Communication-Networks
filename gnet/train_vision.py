@@ -10,7 +10,7 @@ import json
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from vision import CPPN, ImageDecoder, modify_decoder, perceptual_loss
+from vision import Generator, ImageDecoder, modify_decoder, perceptual_loss
 from cfg import CFG
 from aug import get_noisy_channel
 from main import save_ckpts, load_ckpts
@@ -113,7 +113,7 @@ def dummy_input(models, data):
 def main():
   # ==================== DATA AND MODELS ====================
   data, samples = make_data()
-  generator = CPPN(**CFG)
+  generator = Generator()
   discriminator = modify_decoder(ImageDecoder, just_GAP=False, NUM_SYMBOLS=NUM_SYMBOLS)
   models = {
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],

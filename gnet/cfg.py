@@ -21,18 +21,19 @@ CFG = {
 
   # vision models
   'VISION': VISION,
-  'y_dim': 72,
-  'x_dim': 72,
-  'G_hidden_size': 128,
-  'G_num_layers': 5,
+  'vision_model': 'conv',
+  'y_dim': 64,
+  'x_dim': 64,
+  'R': 6,
+  'G_hidden_size': 256,
   'cppn_loc_embed_dim': 32,
-  'cppn_Z_embed_dim': 64,
+  'gen_Z_embed_dim': 64,
   'c_out': 1,
   'generator_lr': 0.0005,
   'discriminator_lr': 0.0005,
 
   # training
-  'batch_size': 72,
+  'batch_size': 32,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.001 if VISION else 0.0,
@@ -45,3 +46,7 @@ CFG = {
   'load_name': None,
 }
 RESULTS = {}
+
+if CFG['vision_model']:
+  assert CFG['x_dim'] == CFG['y_dim']
+  

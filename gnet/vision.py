@@ -19,25 +19,22 @@ class CPPN(tf.keras.Model):
   series of dense layers, combines with graph representation (z) and regresses
   pixel values directly.
   """
-  def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, G_num_layers:int,
+  def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, R:int,
                cppn_loc_embed_dim, cppn_Z_embed_dim:int, c_out:int=1,
                **kwargs):
     super(CPPN, self).__init__()
     self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim, **dense_regularization)
     self.Z_embed = tf.keras.layers.Dense(cppn_Z_embed_dim, **dense_regularization)
     self.in_w = tf.keras.layers.Dense(G_hidden_size, **dense_regularization)
-    self.ws = [tf.keras.layers.Dense(G_hidden_size, **dense_regularization) for _ in range(G_num_layers)]
+    self.ws = [tf.keras.layers.Dense(G_hidden_size, **dense_regularization) for _ in range(R)]
     self.out_w = tf.keras.layers.Dense(c_out, **dense_regularization)
     self.y_dim = y_dim
     self.x_dim = x_dim
     self.spatial_scale = 1 / max([y_dim, x_dim])
     self.output_scale = 1. / tf.math.sqrt(tf.cast(G_hidden_size, tf.float32))
-    self.norm_1 = tf.keras.layers.LayerNormalization()
-    self.norm_2 = tf.keras.layers.LayerNormalization()
 
   def call(self, Z):
     batch_size = Z.shape[0]
-    Z = self.norm_1(Z)
 
     # get pixel locations and embed pixels
     coords = tf.where(tf.ones((self.y_dim, self.x_dim)))
@@ -50,10 +47,10 @@ class CPPN(tf.keras.Model):
     r = tf.sqrt(tf.math.reduce_sum(dists ** 2, axis=-1))[..., tf.newaxis]
     loc = tf.concat([coords, r], axis=-1)
     loc = self.loc_embed(loc)
-    loc = tf.nn.swish(loc)
     loc = tf.tile(loc[tf.newaxis], [batch_size, 1, 1, 1])
 
     # concatenate Z to locations
+    Z = self.Z_embed(Z)
     Z = tf.tile(Z[:, tf.newaxis, tf.newaxis], [1, self.y_dim, self.x_dim, 1])
     x = tf.concat([loc, Z], axis=-1)
     x = self.in_w(x)
@@ -65,13 +62,86 @@ class CPPN(tf.keras.Model):
       x = x + start_x
       x = tf.nn.swish(x)
 
-    x = self.norm_2(x)
     x = self.out_w(x)
     x = tf.nn.tanh(x)
     if x.shape[-1] == 1:
       # Copy grayscale along RGB axes for easy input into pre-trained, color-based models
       x = tf.tile(x, [1, 1, 1, 3])
     return x
+
+
+class ConvGenerator(tf.keras.Model):
+  def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, R:int,
+               cppn_loc_embed_dim, gen_Z_embed_dim:int, c_out:int=1,
+               **kwargs):
+    super(ConvGenerator, self).__init__()
+    self.Z_embed = tf.keras.layers.Dense(gen_Z_embed_dim, **dense_regularization)
+    self.y_dim = y_dim
+    self.x_dim = x_dim
+    self.spatial_scale = 1 / max([y_dim, x_dim])
+    self.output_scale = 1. / tf.math.sqrt(tf.cast(G_hidden_size, tf.float32))
+    self.upconvs = []
+    self.convs = []
+    self.upconv_norms = []
+    self.conv_norms = []
+    filters = G_hidden_size
+    for r in range(R):
+      upconv = tf.keras.layers.Conv2DTranspose(
+        filters,
+        kernel_size=3,
+        strides=2,
+        padding='same',
+        **dense_regularization
+      )
+      conv = tf.keras.layers.Conv2D(
+        filters,
+        kernel_size=1,
+        strides=1,
+        padding='same',
+        **dense_regularization
+      )
+      self.upconvs = [upconv] + self.upconvs
+      self.convs = [conv] + self.convs
+      self.upconv_norms.append(tf.keras.layers.LayerNormalization())
+      self.conv_norms.append(tf.keras.layers.LayerNormalization())
+      filters = filters // 2
+    self.out_conv = tf.keras.layers.Conv2D(
+      CFG['c_out'],
+      kernel_size=1,
+      strides=1,
+      padding='same',
+      **dense_regularization
+    )
+
+  def call(self, Z):
+    batch_size = Z.shape[0]
+    Z = self.Z_embed(Z)
+    x = Z[:, tf.newaxis, tf.newaxis]
+    for upconv, conv, upconv_norm, conv_norm in \
+      zip(self.upconvs, self.convs, self.upconv_norms, self.conv_norms):
+      x = upconv(x)
+      x = upconv_norm(x)
+      start_x = x
+      x = tf.nn.swish(x)
+
+      x = conv(x)
+      x = conv_norm(x)
+      x = x + start_x
+      x = tf.nn.swish(x)
+
+    x = self.out_conv(x)
+    x = tf.nn.tanh(x)
+    if x.shape[-1] == 1:
+      # Copy grayscale along RGB axes for easy input into pre-trained, color-based models
+      x = tf.tile(x, [1, 1, 1, 3])
+    return x
+
+
+def Generator():
+  if CFG['vision_model'] == 'conv':
+    return ConvGenerator(**CFG)
+  elif CFG['vision_model'] == 'cppn':
+    return CPPN(**CFG)
 
 
 def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
@@ -102,9 +172,9 @@ if DISC_MODEL == 'Xception':
   # PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
 elif DISC_MODEL == 'ResNet50V2':
   ModelFunc = tf.keras.applications.ResNet50V2
-  PerceptorLayerName = 'conv2_block2_out' # 4x downscale
-  # PerceptorLayerName = 'conv3_block3_out' # 8x downscale
-  
+  # PerceptorLayerName = 'conv2_block2_out' # 4x downscale
+  PerceptorLayerName = 'conv3_block3_out' # 8x downscale
+
 ImageDecoder = ModelFunc(
   include_top=False,
   weights="imagenet",
@@ -133,7 +203,7 @@ def perceptual_loss(imgs, max_pairs=100):
   feature_pairs = tf.gather(features, pair_idxs)
   diffs = feature_pairs[:, 0] - feature_pairs[:, 1]
   diffs = tf.math.reduce_mean(tf.abs(diffs), axis=[1, 2, 3])
-  repel_loss = tf.math.reduce_mean(diffs) * -2.
+  repel_loss = tf.sqrt(tf.math.reduce_mean(diffs) + 0.001) * -1
   return repel_loss
 
 
