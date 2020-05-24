@@ -4,20 +4,19 @@ problem of reconstructing simple one-hot vectors.
 """
 
 import code
+import os
 import random
 import json
 
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from vision import Generator, ImageDecoder, modify_decoder, perceptual_loss
+from vision import Generator, ImageDecoder, perceptual_loss
 from cfg import CFG
 from aug import get_noisy_channel
 from main import save_ckpts, load_ckpts
 from ml_utils import shuffle_together, update_data_dict, normalize_data_dict
 
-
-NUM_SYMBOLS = 512
 
 
 """Hyperparameters
@@ -63,10 +62,10 @@ starting pretrained model for the discrminator and the perceptual loss model.
 
 
 def make_data():
-  x = tf.random.uniform((CFG['num_samples'],), 0, NUM_SYMBOLS, dtype=tf.int32)
-  x = tf.one_hot(x, depth=NUM_SYMBOLS)
-  samples = tf.range(NUM_SYMBOLS)
-  samples = tf.one_hot(samples, depth=NUM_SYMBOLS)
+  x = tf.random.uniform((CFG['num_samples'],), 0, CFG['NUM_SYMBOLS'], dtype=tf.int32)
+  x = tf.one_hot(x, depth=CFG['NUM_SYMBOLS'])
+  samples = tf.range(CFG['NUM_SYMBOLS'])
+  samples = tf.one_hot(samples, depth=CFG['NUM_SYMBOLS'])
   return x, samples
 
 
@@ -85,9 +84,10 @@ def train_step(models, symbols, noisy_channel, difficulty, e_i):
   with tf.GradientTape(persistent=True) as tape:
     batch_loss = 0
     imgs = models['generator'][0](symbols)
-    repel_loss = perceptual_loss(imgs)
-    reg_loss['perceptual'] = repel_loss
-    batch_loss += repel_loss
+    if CFG['perceptual_loss']:
+      repel_loss = perceptual_loss(imgs)
+      reg_loss['perceptual'] = repel_loss
+      batch_loss += repel_loss
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
     batch_loss += tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=CFG['label_smoothing'])
@@ -105,16 +105,18 @@ def train_step(models, symbols, noisy_channel, difficulty, e_i):
 
 def dummy_input(models, data):
   symbols = data[:CFG['batch_size']]
-  imgs = models['generator'][0](symbols)
-  predictions = models['discriminator'][0](imgs)
-
+  print('GENERATOR')
+  imgs = models['generator'][0](symbols, debug=True)
+  print('DISCRIMINATOR')
+  predictions = models['discriminator'][0](imgs, debug=True)
 
 
 def main():
+  os.makedirs(f"gallery/{CFG['run_name']}", exist_ok=True)
   # ==================== DATA AND MODELS ====================
   data, samples = make_data()
   generator = Generator()
-  discriminator = modify_decoder(ImageDecoder, just_GAP=False, NUM_SYMBOLS=NUM_SYMBOLS)
+  discriminator = ImageDecoder
   models = {
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],
@@ -153,7 +155,7 @@ def main():
     # VISUALIZE ====================
     if e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
-      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, NUM_SYMBOLS, tf.int32)
+      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, CFG['NUM_SYMBOLS'], tf.int32)
       these_samples = tf.gather(samples, sample_idxs)
       sample_imgs = generator(these_samples)
       # scale tanh to visual range
@@ -162,7 +164,7 @@ def main():
       axes[0][1].imshow(sample_imgs[1])
       axes[1][0].imshow(sample_imgs[2])
       axes[1][1].imshow(sample_imgs[3])
-      plt.savefig(f"{e_i}.png")
+      plt.savefig(f"gallery/{CFG['run_name']}/{e_i}.png")
 
 
 if __name__ == "__main__":

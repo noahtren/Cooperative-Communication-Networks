@@ -26,21 +26,23 @@ CFG = {
   'y_dim': 128,
   'x_dim': 128,
   'R': 7,
-  'G_hidden_size': 256,
+  'vision_hidden_size': 512,
   'cppn_loc_embed_dim': 32,
   'gen_Z_embed_dim': 16,
   'c_out': 3,
   'generator_lr': 0.0005,
-  'discriminator_lr': 0.001,
+  'discriminator_lr': 0.0005,
+  'NUM_SYMBOLS': 64, # for toy problem
+  'use_perceptual_loss': True,
 
   # training
-  'batch_size': 16,
+  'batch_size': 64,
   'epochs': 3_000,
   'mse_loss_only': False,
-  'label_smoothing': 0.0001 if VISION else 0.0,
+  'label_smoothing': 0.0 if VISION else 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'perceptual_resnet50',
+  'run_name': 'target_percept_custom',
   # 'run_name': 'graph_pretrain',
   # 'load_name': 'graph_pretrain',
   'load_name': None,

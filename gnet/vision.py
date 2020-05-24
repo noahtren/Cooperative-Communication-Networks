@@ -37,19 +37,19 @@ class CPPN(tf.keras.Model):
   series of dense layers, combines with graph representation (z) and regresses
   pixel values directly.
   """
-  def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, R:int,
+  def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
                cppn_loc_embed_dim, cppn_Z_embed_dim:int, c_out:int=1,
                **kwargs):
     super(CPPN, self).__init__()
     self.loc_embed = tf.keras.layers.Dense(cppn_loc_embed_dim, **dense_regularization)
     self.Z_embed = tf.keras.layers.Dense(cppn_Z_embed_dim, **dense_regularization)
-    self.in_w = tf.keras.layers.Dense(G_hidden_size, **dense_regularization)
-    self.ws = [tf.keras.layers.Dense(G_hidden_size, **dense_regularization) for _ in range(R)]
+    self.in_w = tf.keras.layers.Dense(vision_hidden_size, **dense_regularization)
+    self.ws = [tf.keras.layers.Dense(vision_hidden_size, **dense_regularization) for _ in range(R)]
     self.out_w = tf.keras.layers.Dense(c_out, **dense_regularization)
     self.y_dim = y_dim
     self.x_dim = x_dim
     self.spatial_scale = 1 / max([y_dim, x_dim])
-    self.output_scale = 1. / tf.math.sqrt(tf.cast(G_hidden_size, tf.float32))
+    self.output_scale = 1. / tf.math.sqrt(tf.cast(vision_hidden_size, tf.float32))
 
   def call(self, Z):
     batch_size = Z.shape[0]
@@ -89,8 +89,8 @@ class CPPN(tf.keras.Model):
 
 
 class ConvGenerator(tf.keras.Model):
-  def __init__(self, y_dim:int, x_dim:int, G_hidden_size:int, R:int,
-               gen_Z_embed_dim:int, c_out:int=1,
+  def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
+               gen_Z_embed_dim:int, c_out:int,
                **kwargs):
     super(ConvGenerator, self).__init__()
     self.init_Z_embed = tf.keras.layers.Dense(gen_Z_embed_dim, **dense_regularization)
@@ -103,8 +103,8 @@ class ConvGenerator(tf.keras.Model):
     self.one_conv_norms = []
     self.conv_norms = []
     self.Z_embeds = []
-    filters = G_hidden_size
     for r in range(R):
+      filters = vision_hidden_size // (2 ** (R-r))
       upconv = tf.keras.layers.Conv2DTranspose(
         filters,
         kernel_size=3,
@@ -113,11 +113,15 @@ class ConvGenerator(tf.keras.Model):
         **cnn_regularization
       )
       one_conv = tf.keras.layers.Conv2D(
-        filters,
+        filters * 2,
         kernel_size=1,
         strides=1,
         padding='same',
-        **cnn_regularization
+        # no regularization here because it takes
+        # raw scaled pixel locations, as well as Z
+        # embeddings, and we may want this layer to
+        # learn things that may be inhibited by
+        # regularization
       )
       conv = tf.keras.layers.Conv2D(
         filters,
@@ -136,7 +140,6 @@ class ConvGenerator(tf.keras.Model):
       self.upconv_norms.append(tf.keras.layers.LayerNormalization())
       self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
       self.conv_norms.append(tf.keras.layers.LayerNormalization())
-      filters = filters // 2
     self.out_conv = tf.keras.layers.Conv2D(
       c_out,
       kernel_size=1,
@@ -145,12 +148,14 @@ class ConvGenerator(tf.keras.Model):
       **cnn_regularization
     )
 
-  def call(self, Z):
+  def call(self, Z, debug=False):
     batch_size = Z.shape[0]
     x = self.init_Z_embed(Z)
     x = x[:, tf.newaxis, tf.newaxis]
+    if debug: tf.print(x.shape)
     for Z_embed, upconv, one_conv, conv, upconv_norm, one_conv_norm, conv_norm in \
       zip(self.Z_embeds, self.upconvs, self.one_convs, self.convs, self.upconv_norms, self.one_conv_norms, self.conv_norms):
+      if debug: tf.print(x.shape)
       x = upconv(x)
       x = upconv_norm(x)
       x = tf.nn.dropout(x, 0.1)
@@ -164,6 +169,7 @@ class ConvGenerator(tf.keras.Model):
         [1, y_dim, x_dim, 1])
 
       x = tf.concat([x, loc, _z], axis=-1)
+      if debug: tf.print(x.shape)
 
       x = one_conv(x)
       x = one_conv_norm(x)
@@ -174,11 +180,91 @@ class ConvGenerator(tf.keras.Model):
       x = tf.nn.dropout(x, 0.1)
       x = x + start_x
       x = tf.nn.swish(x)
-
+    
+    if debug: tf.print(x.shape)
     x = self.out_conv(x)
     x = tf.nn.tanh(x)
     if x.shape[-1] == 1:
       x = tf.tile(x, [1, 1, 1, 3])
+    return x
+
+
+class ConvDiscriminator(tf.keras.Model):
+  def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
+               gen_Z_embed_dim:int, c_out:int, hidden_size:int, NUM_SYMBOLS:int,
+               **kwargs):
+    super(ConvDiscriminator, self).__init__()
+    self.downconvs = []
+    self.convs = []
+    self.one_convs = []
+    self.downconv_norms = []
+    self.one_conv_norms = []
+    self.conv_norms = []
+    for r in range(R):
+      filters = vision_hidden_size // (2 ** (R-r-1))
+      downconv = tf.keras.layers.Conv2D(
+        filters,
+        kernel_size=3,
+        strides=2,
+        padding='same',
+        **cnn_regularization
+      )
+      one_conv = tf.keras.layers.Conv2D(
+        filters * 2,
+        kernel_size=1,
+        strides=1,
+        padding='same',
+        **cnn_regularization
+      )
+      conv = tf.keras.layers.Conv2D(
+        filters,
+        kernel_size=3,
+        strides=1,
+        padding='same',
+        **cnn_regularization
+      )
+      self.downconvs.append(downconv)
+      self.one_convs.append(one_conv)
+      self.convs.append(conv)
+      self.downconv_norms.append(tf.keras.layers.LayerNormalization())
+      self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
+      self.conv_norms.append(tf.keras.layers.LayerNormalization())
+    self.out_conv = tf.keras.layers.Conv2D(
+      hidden_size,
+      kernel_size=1,
+      strides=1,
+      padding='same',
+      **cnn_regularization
+    )
+    self.pred = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)
+    self.gap = tf.keras.layers.GlobalAveragePooling2D()
+
+  def call(self, x, debug=False):
+    for downconv, one_conv, conv, downconv_norm, one_conv_norm, conv_norm in \
+      zip(self.downconvs, self.one_convs, self.convs, self.downconv_norms, self.one_conv_norms, self.conv_norms):
+      if debug: tf.print(x.shape)
+      x = downconv(x)
+      x = downconv_norm(x)
+      x = tf.nn.dropout(x, 0.1)
+      x = tf.nn.swish(x)
+      start_x = x
+
+      x = one_conv(x)
+      x = one_conv_norm(x)
+      x = tf.nn.swish(x)
+
+      x = conv(x)
+      x = conv_norm(x)
+      x = tf.nn.dropout(x, 0.1)
+      x = x + start_x
+      x = tf.nn.swish(x)
+    
+    if debug: tf.print(x.shape)
+    x = self.out_conv(x)
+    x = self.gap(x)
+    # remove this when training on graph task
+    x = self.pred(x)
+    x = tf.nn.softmax(x)
     return x
 
 
@@ -189,21 +275,21 @@ def Generator():
     return CPPN(**CFG)
 
 
-def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
-  """Takes an image decoder and adds a final classification
-  layer with as many output classes as the number of symbols
-  in the toy problem.
-  """
-  inputs = decoder.inputs
-  x = decoder.outputs[0]
-  x = tf.keras.layers.GlobalAveragePooling2D()(x)
-  if not just_GAP:
-    scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
-    x = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)(x)
-    x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
-    x = tf.keras.layers.Activation(tf.nn.softmax)(x)
-  model = tf.keras.Model(inputs=inputs, outputs=[x])
-  return model
+# def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
+#   """Takes an image decoder and adds a final classification
+#   layer with as many output classes as the number of symbols
+#   in the toy problem.
+#   """
+#   inputs = decoder.inputs
+#   x = decoder.outputs[0]
+#   x = tf.keras.layers.GlobalAveragePooling2D()(x)
+#   if not just_GAP:
+#     scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
+#     x = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)(x)
+#     x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
+#     x = tf.keras.layers.Activation(tf.nn.softmax)(x)
+#   model = tf.keras.Model(inputs=inputs, outputs=[x])
+#   return model
 
 
 ImageDecoder = None
@@ -227,11 +313,12 @@ elif CFG['DISC_MODEL'] == 'VGG16':
   PerceptorLayerName = 'block5_conv3' # 16x downscale
 
 
-ImageDecoder = ModelFunc(
-  include_top=False,
-  weights=None,
-  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
-)
+# ImageDecoder = ModelFunc(
+#   include_top=False,
+#   weights=None,
+#   input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+# )
+ImageDecoder = ConvDiscriminator(**CFG)
 Perceptor = ModelFunc(
   include_top=False,
   weights="imagenet",
@@ -261,7 +348,7 @@ def perceptual_loss(imgs, max_pairs=1000):
   feature_pairs = tf.gather(features, pair_idxs)
   diffs = feature_pairs[:, 0] - feature_pairs[:, 1]
   diffs = tf.math.reduce_mean(tf.abs(diffs), axis=-1)
-  repel_loss = tf.math.reduce_mean(diffs) * -1.
+  repel_loss = tf.math.reduce_mean(diffs) * -0.1
   return repel_loss
 
 

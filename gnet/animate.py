@@ -11,7 +11,7 @@ import numpy as np
 import imageio
 from tqdm import tqdm
 
-from vision import CPPN, ImageDecoder, modify_decoder
+from vision import Generator, ImageDecoder, modify_decoder
 from train_vision import make_data
 from cfg import CFG
 from main import load_ckpts
@@ -41,12 +41,12 @@ def make_sliding_window_data(points:List[int], steps_between:int):
 
 
 if __name__ == "__main__":
-  data = make_sliding_window_data([13, 14, 15, 24, 13], 20)
-  generator = CPPN(**CFG)
+  data = make_sliding_window_data([0,12,16,0], 30)
+  generator = Generator()
   generator(tf.expand_dims(data[0], 0))
   models = {'generator': [generator, 0]}
   load_ckpts(models, CFG['load_name'], 'latest')
-  writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=40)
+  writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=10)
   for i, val in tqdm(enumerate(data)):
     val = tf.expand_dims(val, 0)
     img = generator(val)

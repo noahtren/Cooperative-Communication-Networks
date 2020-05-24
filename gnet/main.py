@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from graph_data import TensorGraph
 from encoder import Encoder 
 from decoder import GraphDecoder
-from vision import CPPN, ImageDecoder, modify_decoder
+from vision import CPPN, ImageDecoder
 from graph_match import minimum_loss_permutation
 from cfg import CFG
 from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
