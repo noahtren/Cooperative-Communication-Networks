@@ -109,13 +109,6 @@ def train_step(models, batch, test=False):
   return batch_loss, acc, reg_loss
 
 
-def save_ckpts(models, log_dir, ckpt_name:str):
-  for model_name, model in models.items():
-    model_path = os.path.join(log_dir, model_name, ckpt_name)
-    os.makedirs(model_path, exist_ok=True)
-    model[0].save_weights(model_path)
-
-
 def dummy_batch(models,
                 tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes):
   """Only for graph model. Used to populate weights before loading.
@@ -131,19 +124,6 @@ def dummy_batch(models,
   }
   x = models['encoder'][0](batch)
   adj_pred, nf_pred = models['decoder'][0](x)
-
-
-def load_ckpts(models, load_name, ckpt_name='best'):
-  log_dir = f"logs/{load_name}"
-  for model_name, (model, _) in models.items():
-    model_path = os.path.join(log_dir, model_name, ckpt_name)
-    if os.path.exists(model_path):
-      model.load_weights(model_path)
-      print(f"Loaded weights for {model_name}")
-  if CFG['VISION'] and 'decoder' in models:
-    models['decoder'][0].expand_w = \
-      tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
-    print("Overrode decoder input layer (for vision compatibility)")
 
 
 if __name__ == "__main__":

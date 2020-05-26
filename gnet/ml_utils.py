@@ -3,8 +3,13 @@ https://www.kaggle.com/philculliton/bert-optimization
 """
 
 import code
+import os
 
 import tensorflow as tf
+try:
+  CFG
+except NameError:
+  from cfg import CFG
 
 
 def shuffle_together(*tensors):
@@ -93,6 +98,7 @@ def create_optimizer(init_lr, num_train_steps, num_warmup_steps):
   return optimizer
 
 
+# ============================== REGULARIZATION ==============================
 dense_regularization = {
   'kernel_regularizer': tf.keras.regularizers.l2(1e-4),
   'bias_regularizer': tf.keras.regularizers.l2(1e-4),
@@ -105,3 +111,24 @@ cnn_regularization = {
   'kernel_regularizer': tf.keras.regularizers.l2(1e-4),
   'bias_regularizer': tf.keras.regularizers.l2(1e-4),
 }
+
+
+# ============================== LOAD/SAVE ==============================
+def load_ckpts(models, load_name, ckpt_name='best'):
+  log_dir = f"logs/{load_name}"
+  for model_name, (model, _) in models.items():
+    model_path = os.path.join(log_dir, model_name, ckpt_name)
+    if os.path.exists(model_path):
+      model.load_weights(model_path)
+      print(f"Loaded weights for {model_name}")
+  if CFG['VISION'] and 'decoder' in models:
+    models['decoder'][0].expand_w = \
+      tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
+    print("Overrode decoder input layer (for vision compatibility)")
+
+
+def save_ckpts(models, log_dir, ckpt_name:str):
+  for model_name, model in models.items():
+    model_path = os.path.join(log_dir, model_name, ckpt_name)
+    os.makedirs(model_path, exist_ok=True)
+    model[0].save_weights(model_path)
