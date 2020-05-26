@@ -11,12 +11,10 @@ import numpy as np
 import imageio
 from tqdm import tqdm
 
-from vision import Generator, ImageDecoder, modify_decoder
+from vision import Generator, Decoder
 from train_vision import make_data
 from cfg import CFG
-from main import load_ckpts
-
-NUM_SAMPLES = 512
+from ml_utils import load_ckpts
 
 
 def make_sliding_window_data(points:List[int], steps_between:int):
@@ -32,7 +30,7 @@ def make_sliding_window_data(points:List[int], steps_between:int):
     pt_2 = points[i + 1]
     for step in range(steps_between):
       ratio = 1 - (step / (steps_between))
-      val = np.zeros((NUM_SAMPLES,), dtype=np.float32)
+      val = np.zeros((CFG['NUM_SYMBOLS'],), dtype=np.float32)
       val[pt_1] = ratio
       val[pt_2] = 1 - ratio
       data.append(val)
@@ -41,7 +39,7 @@ def make_sliding_window_data(points:List[int], steps_between:int):
 
 
 if __name__ == "__main__":
-  data = make_sliding_window_data([0,12,16,0], 30)
+  data = make_sliding_window_data([6,17,18,6], 30)
   generator = Generator()
   generator(tf.expand_dims(data[0], 0))
   models = {'generator': [generator, 0]}
