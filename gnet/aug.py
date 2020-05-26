@@ -287,7 +287,7 @@ class DifferentiableAugment:
       14: 2.4,
       15: 2.5,
     }
-    imgs = tf.nn.tanh(x * TANH_AMT[DIFFICULTY]) * 1.31
+    imgs = tf.nn.tanh(imgs * TANH_AMT[DIFFICULTY]) * 1.31
     return imgs
 
 
