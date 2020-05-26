@@ -1,4 +1,5 @@
 import code
+import random
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -41,21 +42,21 @@ class DifferentiableAugment:
     """
     STATIC_STDDEVS = {
       0: 0.00,
-      1: 0.02,
-      2: 0.04,
-      3: 0.06,
-      4: 0.08,
-      5: 0.10,
-      6: 0.13,
-      7: 0.16,
-      8: 0.18,
-      9: 0.2,
-      10: 0.21,
-      11: 0.22,
-      12: 0.23,
-      13: 0.24,
-      14: 0.25,
-      15: 0.26,
+      1: 0.03,
+      2: 0.06,
+      3: 0.1,
+      4: 0.13,
+      5: 0.16,
+      6: 0.2,
+      7: 0.23,
+      8: 0.26,
+      9: 0.3,
+      10: 0.33,
+      11: 0.36,
+      12: 0.4,
+      13: 0.43,
+      14: 0.46,
+      15: 0.50,
     }
     img_shape = imgs[0].shape
     batch_size = imgs.shape[0]
@@ -266,15 +267,39 @@ class DifferentiableAugment:
       )
     return imgs
 
+  @staticmethod
+  def sharp_tanh(imgs, DIFFICULTY):
+    TANH_AMT = {
+      0: 1.0,
+      1: 1.1,
+      2: 1.2,
+      3: 1.3,
+      4: 1.4,
+      5: 1.5,
+      6: 1.6,
+      7: 1.7,
+      8: 1.8,
+      9: 1.9,
+      10: 2.0,
+      11: 2.1,
+      12: 2.2,
+      13: 2.3,
+      14: 2.4,
+      15: 2.5,
+    }
+    imgs = tf.nn.tanh(x * TANH_AMT[DIFFICULTY]) * 1.31
+    return imgs
+
 
 def get_noisy_channel(func_names=[
     'static',
     'blur',
-    'cutout',
+    'cutout', # tfa
     'random_scale',
-    'translate',
+    'translate', # tfa
     'resize',
-    'fractional_rotate',
+    'fractional_rotate', # tfa
+    'sharp_tanh'
   ]):
   """Return a function that adds noise to a batch of images, conditioned on a
   difficulty value.
@@ -286,7 +311,9 @@ def get_noisy_channel(func_names=[
       return images
     else:
       for func in funcs:
-        images = func(images, DIFFICULTY)
+        this_difficulty = random.randint(0, DIFFICULTY)
+        if this_difficulty != 0:
+          images = func(images, this_difficulty)
       return images
   funcs = []
   for func_name in func_names:
