@@ -11,13 +11,19 @@ import json
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from vision import Generator, ImageDecoder, perceptual_loss
-from cfg import CFG
+from vision import Generator, Decoder, Perceptor, vector_distance_loss, perceptual_loss
 from aug import get_noisy_channel
-from main import save_ckpts, load_ckpts
-from ml_utils import shuffle_together, update_data_dict, normalize_data_dict
+from ml_utils import shuffle_together, update_data_dict, normalize_data_dict, \
+  save_ckpts, load_ckpts
 
+# If CFG is already defined in this session (perhaps a Colab notebook), then
+# don't load the default config
+try:
+  CFG
+except NameError:
+  from cfg import CFG
 
+print(CFG['batch_size'])
 
 """Hyperparameters
 
@@ -58,6 +64,10 @@ inception architecture.
 
 NOTE: perceptual loss is quite nice and works pretty well, I can use the same
 starting pretrained model for the discrminator and the perceptual loss model.
+
+NOTE: I can generalize perceptual loss to the vector-graph matching problem
+in an interesting way. Right now I just have a loose intuition for it, will
+need to try implementing it. see notes on [[Vector Distancing Matching]]
 """
 
 
@@ -69,7 +79,6 @@ def make_data():
   return x, samples
 
 
-
 def update_difficulty(difficulty, epoch_loss, epoch_acc):
   if epoch_acc > 0.8 and difficulty < 15:
     difficulty += 1
@@ -79,15 +88,21 @@ def update_difficulty(difficulty, epoch_loss, epoch_acc):
 
 
 @tf.function
-def train_step(models, symbols, noisy_channel, difficulty, e_i):
+def train_step(models, perceptor, symbols, noisy_channel, difficulty, e_i):
   reg_loss = {}
   with tf.GradientTape(persistent=True) as tape:
     batch_loss = 0
     imgs = models['generator'][0](symbols)
-    if CFG['perceptual_loss']:
-      repel_loss = perceptual_loss(imgs)
-      reg_loss['perceptual'] = repel_loss
-      batch_loss += repel_loss
+    if CFG['use_perceptual_loss']:
+      percepts = perceptor(imgs)
+      percept_loss = perceptual_loss(percepts)
+      reg_loss['perceptual'] = percept_loss
+      batch_loss += percept_loss
+    if CFG['use_distance_loss']:
+      percepts = perceptor(imgs)
+      dist_loss = vector_distance_loss(symbols, imgs)
+      reg_loss['distance'] = dist_loss
+      batch_loss += dist_loss
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
     batch_loss += tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=CFG['label_smoothing'])
@@ -116,7 +131,8 @@ def main():
   # ==================== DATA AND MODELS ====================
   data, samples = make_data()
   generator = Generator()
-  discriminator = ImageDecoder
+  discriminator = Decoder()
+  perceptor = Perceptor()
   models = {
     'generator': [generator, tf.keras.optimizers.Adam(lr=CFG['generator_lr'])],
     'discriminator': [discriminator, tf.keras.optimizers.Adam(lr=CFG['discriminator_lr'])],
@@ -138,7 +154,7 @@ def main():
       end_b = min([CFG['num_samples'], (b_i + 1) * CFG['batch_size']])
       start_b = end_b - CFG['batch_size']
       batch = data[start_b:end_b]
-      batch_loss, batch_acc, batch_reg_loss = train_step(models, batch, noisy_channel, difficulty, e_i)
+      batch_loss, batch_acc, batch_reg_loss = train_step(models, perceptor, batch, noisy_channel, difficulty, e_i)
       epoch_loss += batch_loss
       acc += batch_acc
       update_data_dict(reg_loss, batch_reg_loss)
@@ -165,6 +181,10 @@ def main():
       axes[1][0].imshow(sample_imgs[2])
       axes[1][1].imshow(sample_imgs[3])
       plt.savefig(f"gallery/{CFG['run_name']}/{e_i}.png")
+      plt.clf()
+      plt.cla()
+      plt.close()
+
 
 
 if __name__ == "__main__":

@@ -131,7 +131,7 @@ class ConvGenerator(tf.keras.Model):
         **cnn_regularization
       )
       # TODO: note that this happened
-      Z_filters = max([8, filters])
+      Z_filters = max([8, filters // 4])
       Z_embed = tf.keras.layers.Dense(Z_filters, **dense_regularization)
       self.upconvs = [upconv] + self.upconvs
       self.one_convs = [one_conv] + self.one_convs
@@ -168,6 +168,7 @@ class ConvGenerator(tf.keras.Model):
       _z = tf.tile(_z[:, tf.newaxis, tf.newaxis],
         [1, y_dim, x_dim, 1])
 
+      if debug: tf.print(f"loc: {loc.shape}, z: {_z.shape}")
       x = tf.concat([x, loc, _z], axis=-1)
       if debug: tf.print(x.shape)
 
@@ -234,7 +235,7 @@ class ConvDiscriminator(tf.keras.Model):
       kernel_size=1,
       strides=1,
       padding='same',
-      **cnn_regularization
+      **dense_regularization
     )
     self.pred = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)
     self.gap = tf.keras.layers.GlobalAveragePooling2D()
@@ -275,81 +276,125 @@ def Generator():
     return CPPN(**CFG)
 
 
-# def modify_decoder(decoder, just_GAP=True, NUM_SYMBOLS=None):
-#   """Takes an image decoder and adds a final classification
-#   layer with as many output classes as the number of symbols
-#   in the toy problem.
-#   """
-#   inputs = decoder.inputs
-#   x = decoder.outputs[0]
-#   x = tf.keras.layers.GlobalAveragePooling2D()(x)
-#   if not just_GAP:
-#     scale = 1. / tf.math.sqrt(tf.cast(x.shape[-1], tf.float32))
-#     x = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)(x)
-#     x = tf.keras.layers.Lambda(lambda x: x * scale)(x)
-#     x = tf.keras.layers.Activation(tf.nn.softmax)(x)
-#   model = tf.keras.Model(inputs=inputs, outputs=[x])
-#   return model
+def get_pretrained_info():
+  if CFG['pretrained_disc'] == 'Xception':
+    ModelFunc = tf.keras.applications.Xception
+    # PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
+    PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
+  elif CFG['pretrained_disc'] == 'ResNet50V2':
+    ModelFunc = tf.keras.applications.ResNet50V2
+    # PerceptorLayerName = 'conv2_block3_out' # 4x downscale
+    # PerceptorLayerName = 'conv3_block4_out' # 8x downscale
+    PerceptorLayerName = 'conv4_block6_out' # 16x downscale
+    # PerceptorLayerName = 'conv5_block2_out' # 32x downscale
+  elif CFG['pretrained_disc'] == 'VGG16':
+    ModelFunc = tf.keras.applications.VGG16
+    # PerceptorLayerName = 'block3_conv3' # 4x downscale
+    # PerceptorLayerName = 'block4_conv3' # 8x downscale
+    PerceptorLayerName = 'block5_conv3' # 16x downscale
+  return ModelFunc, PerceptorLayerName
 
 
-ImageDecoder = None
-Perceptor = None
-PerceptorLayerName = None
-ModelFunc = None
-if CFG['DISC_MODEL'] == 'Xception':
-  ModelFunc = tf.keras.applications.Xception
-  # PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
-  PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
-elif CFG['DISC_MODEL'] == 'ResNet50V2':
-  ModelFunc = tf.keras.applications.ResNet50V2
-  # PerceptorLayerName = 'conv2_block3_out' # 4x downscale
-  # PerceptorLayerName = 'conv3_block4_out' # 8x downscale
-  # PerceptorLayerName = 'conv4_block6_out' # 16x downscale
-  PerceptorLayerName = 'conv5_block2_out' # 32x downscale
-elif CFG['DISC_MODEL'] == 'VGG16':
-  ModelFunc = tf.keras.applications.VGG16
-  # PerceptorLayerName = 'block3_conv3' # 4x downscale
-  # PerceptorLayerName = 'block4_conv3' # 8x downscale
-  PerceptorLayerName = 'block5_conv3' # 16x downscale
+def Decoder():
+  if CFG['use_custom_disc']:
+    ImageDecoder = ConvDiscriminator(**CFG)
+    return ImageDecoder
+  else:
+    ModelFunc, _ = get_pretrained_info()
+    ImageDecoder = ModelFunc(
+      include_top=False,
+      weights="imagenet",
+      input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
+    )
+    return ImageDecoder
 
 
-# ImageDecoder = ModelFunc(
-#   include_top=False,
-#   weights=None,
-#   input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
-# )
-ImageDecoder = ConvDiscriminator(**CFG)
-Perceptor = ModelFunc(
-  include_top=False,
-  weights="imagenet",
-  input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
-)
-PerceptorLayer = Perceptor.get_layer(PerceptorLayerName)
-Perceptor = tf.keras.Model(inputs=Perceptor.inputs, outputs=[PerceptorLayer.output])
-print(f"Perceptor output: {Perceptor.layers[-1].output}")
+def Perceptor():
+  """Use a pretrained model to use in calculating a perceptual loss score
+  """
+  ModelFunc, PerceptorLayerName = get_pretrained_info()
+  Perceptor = ModelFunc(
+    include_top=False,
+    weights="imagenet",
+    input_shape=((CFG['y_dim'], CFG['x_dim'], 3))
+  )
+  PerceptorLayer = Perceptor.get_layer(PerceptorLayerName)
+  Perceptor = tf.keras.Model(inputs=Perceptor.inputs, outputs=[PerceptorLayer.output])
+  print(f"Perceptor output: {Perceptor.layers[-1].output}")
+  return Perceptor
 
 
-def perceptual_loss(imgs, max_pairs=1000):
+def vector_distance_loss(rep1, rep2, max_pairs=1_000):
+  """Experimental loss score based on trying to match the distance between
+  corresponding pairs of representations, using logistic loss between distances
+  normalized from 0 to 1. No idea how stable this will be!
+
+  This use case: match the distances between pairs of images perceptions with
+  the distances between pairs of symbol labels.
+  """
+  n = rep1.shape[0]
+  assert n >= 4
+  num_pairs = (rep1.shape[0] * (rep1.shape[0] - 1)) // 2
+  pairs = tf.where(tf.ones((n, n)))
+
+  # get diagonal of adjacency matrix indices
+  unique_pairs = tf.squeeze(tf.where(pairs[:, 0] < pairs[:, 1]))
+  pairs = tf.gather(pairs, unique_pairs)
+  num_pairs = min([num_pairs, max_pairs])
+  use_pair_idxs = tf.random.uniform([num_pairs], minval=0, maxval=num_pairs, dtype=tf.int32)
+  pairs = tf.gather(pairs, use_pair_idxs)
+  
+  # DISTANCES 1
+  pairs1 = tf.gather(rep1, pairs)
+  diffs1 = tf.abs(pairs1[:, 0] - pairs1[:, 1])
+  # get average feature distance
+  diffs1 = tf.math.reduce_mean(diffs1, axis=tf.range(tf.rank(diffs1) - 1) + 1)
+
+  # DISTANCES 2
+  pairs2 = tf.gather(rep2, pairs)
+  diffs2 = tf.abs(pairs2[:, 0] - pairs2[:, 1])
+  # get average feature distance
+  diffs2 = tf.math.reduce_mean(diffs2, axis=tf.range(tf.rank(diffs2) - 1) + 1)
+
+  # NORMALIZE DISTANCES
+  def zero_one_normalize(tensor):
+    # dont subtract minimum because this fails with all samples being equal
+    # tensor = tensor - tf.math.reduce_min(tensor)
+    tensor = tensor / tf.math.reduce_max(tensor)
+    return tensor
+
+  diffs1 = zero_one_normalize(diffs1)
+  diffs2 = zero_one_normalize(diffs2)
+  
+  # FIND THE DISTANCE BETWEEN DISTANCES (HAHA)
+  diffs1 = diffs1[:, tf.newaxis]
+  diffs2 = diffs2[:, tf.newaxis]
+  error = tf.keras.losses.binary_crossentropy(diffs1, diffs2)
+  error = tf.math.reduce_mean(error)
+  return error
+
+
+def perceptual_loss(features, max_pairs=1_000):
   """Returns a negative value, where higher magnitudes describe further distances.
   This is to encourage samples to be perceptually more distant from each other.
   i.e., they are repelled from each other.
   """
-  num_pairs = imgs.shape[0] * (imgs.shape[0] - 1)
-  pair_idxs = tf.where(tf.ones((imgs.shape[0], imgs.shape[0])))
-  non_matching_pairs = tf.squeeze(tf.where(pair_idxs[:, 0] != pair_idxs[:, 1]))
+  b_s = features.shape[0]
+  num_pairs = (b_s * (b_s - 1)) // 2
+  pair_idxs = tf.where(tf.ones((b_s, b_s)))
+  non_matching_pairs = tf.squeeze(tf.where(pair_idxs[:, 0] < pair_idxs[:, 1]))
   pair_idxs = tf.gather(pair_idxs, non_matching_pairs)
 
   num_pairs = min([num_pairs, max_pairs])
   use_pair_idxs = tf.random.uniform([num_pairs], minval=0, maxval=num_pairs, dtype=tf.int32)
   pair_idxs = tf.gather(pair_idxs, use_pair_idxs)
 
-  features = Perceptor(imgs)
   features = tf.math.reduce_mean(features, [1, 2])
   feature_pairs = tf.gather(features, pair_idxs)
   diffs = feature_pairs[:, 0] - feature_pairs[:, 1]
   diffs = tf.math.reduce_mean(tf.abs(diffs), axis=-1)
-  repel_loss = tf.math.reduce_mean(diffs) * -0.1
-  return repel_loss
+  percept_loss = tf.math.reduce_mean(diffs) * -1
+  return percept_loss
 
 
 if __name__ == "__main__":

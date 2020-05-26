@@ -8,7 +8,7 @@ CFG = {
   'language_spec': 'arithmetic',
   'min_num_values': 2,
   'max_num_values': 3,
-  'num_samples': 2_000 if JUST_VISION else 15_000,
+  'num_samples': 1_000 if JUST_VISION else 15_000,
 
   # graph models
   'hidden_size': 512,
@@ -28,24 +28,27 @@ CFG = {
   'R': 7,
   'vision_hidden_size': 512,
   'cppn_loc_embed_dim': 32,
-  'gen_Z_embed_dim': 16,
+  'gen_Z_embed_dim': 512,
   'c_out': 3,
-  'generator_lr': 0.0005,
-  'discriminator_lr': 0.0005,
-  'NUM_SYMBOLS': 64, # for toy problem
-  'use_perceptual_loss': True,
+  'generator_lr': 0.0001,
+  'discriminator_lr': 0.0001,
+  'NUM_SYMBOLS': 256, # for toy problem
+  'use_perceptual_loss': False,
+  'use_distance_loss': False,
+  'pretrained_disc': 'ResNet50V2',
+  'use_custom_disc': True,
 
   # training
-  'batch_size': 64,
+  'batch_size': 32,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.0 if VISION else 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'target_percept_custom',
+  'run_name': 'slow_normal_experiment_256symbols_contd2',
   # 'run_name': 'graph_pretrain',
   # 'load_name': 'graph_pretrain',
-  'load_name': None,
+  'load_name': 'slow_normal_experiment_256symbols_contd',
 }
 RESULTS = {}
 
