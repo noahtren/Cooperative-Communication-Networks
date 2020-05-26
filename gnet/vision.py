@@ -131,12 +131,14 @@ class ConvGenerator(tf.keras.Model):
         **cnn_regularization
       )
       # TODO: note that this happened
+      # TODO: consider embedding pixel locations as well
       Z_filters = max([8, filters // 4])
-      Z_embed = tf.keras.layers.Dense(Z_filters, **dense_regularization)
+      Z_embeds = [tf.keras.layers.Dense(128, **dense_regularization) for _ in range(4)] + \
+        [tf.keras.layers.Dense(Z_filters, **dense_regularization)]
       self.upconvs = [upconv] + self.upconvs
       self.one_convs = [one_conv] + self.one_convs
       self.convs = [conv] + self.convs
-      self.Z_embeds = [Z_embed] + self.Z_embeds
+      self.Z_embeds = [Z_embeds] + self.Z_embeds
       self.upconv_norms.append(tf.keras.layers.LayerNormalization())
       self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
       self.conv_norms.append(tf.keras.layers.LayerNormalization())
@@ -153,7 +155,7 @@ class ConvGenerator(tf.keras.Model):
     x = self.init_Z_embed(Z)
     x = x[:, tf.newaxis, tf.newaxis]
     if debug: tf.print(x.shape)
-    for Z_embed, upconv, one_conv, conv, upconv_norm, one_conv_norm, conv_norm in \
+    for Z_embeds, upconv, one_conv, conv, upconv_norm, one_conv_norm, conv_norm in \
       zip(self.Z_embeds, self.upconvs, self.one_convs, self.convs, self.upconv_norms, self.one_conv_norms, self.conv_norms):
       if debug: tf.print(x.shape)
       x = upconv(x)
@@ -164,7 +166,11 @@ class ConvGenerator(tf.keras.Model):
       start_x = x
       y_dim, x_dim = x.shape[1], x.shape[2]
       loc = generate_scaled_coordinate_hints(batch_size, y_dim, x_dim)
-      _z = Z_embed(Z)
+      _z = Z
+      for Z_embed in Z_embeds:
+        _z = Z_embed(_z)
+        _z = tf.nn.swish(_z)
+        if debug: tf.print(f"Z shape: {_z.shape}")
       _z = tf.tile(_z[:, tf.newaxis, tf.newaxis],
         [1, y_dim, x_dim, 1])
 
