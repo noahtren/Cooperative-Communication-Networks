@@ -88,7 +88,9 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
     self.w_out_2 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
-  
+    self.w_out_3 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
+    self.layer_norm_3 = tf.keras.layers.LayerNormalization()
+
   def call(self, inputs):
     """
     Inputs:
@@ -99,9 +101,6 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     # TODO: may need to apply masking to bottom rows as they are used in dot-product,
     # but they shouldn't be. it seems like the only way to fix this is
     # by masking right *before* the dot product, and then again before softmaxing.
-
-    # NOTE: encoder heads are not in parallel. there could probably be performance
-    # gains if I redid the multi-head attention layer to do multiple heads in parallel
 
     x = inputs['x']
     start_x = tf.nn.dropout(x, 0.1)
@@ -163,11 +162,17 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
     x = self.layer_norm_1(x)
     x = start_x + x
     x = tfa.activations.gelu(x)
-    pre_linear_x = x
+    res_x = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
-    x = pre_linear_x + x
+    x = res_x + x
+    x = tfa.activations.gelu(x)
+    res_x = x
+
+    x = self.w_out_3(x)
+    x = self.layer_norm_3(x)
+    x = res_x + x
     x = tfa.activations.gelu(x)
     return x
 

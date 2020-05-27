@@ -26,7 +26,8 @@ class GlobalAttention(tf.keras.layers.Layer):
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
     self.w_out_2 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
-
+    self.w_out_3 = tf.keras.layers.Dense(hidden_size, **dense_regularization)
+    self.layer_norm_3 = tf.keras.layers.LayerNormalization()
 
   def call(self, x):
     start_x = tf.nn.dropout(x, 0.1)
@@ -51,11 +52,17 @@ class GlobalAttention(tf.keras.layers.Layer):
     x = self.layer_norm_1(x)
     x = start_x + x
     x = tfa.activations.gelu(x)
-    pre_linear_x = x
+    res_x = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
-    x = pre_linear_x + x
+    x = res_x + x
+    x = tfa.activations.gelu(x)
+    res_x = x
+
+    x = self.w_out_3(x)
+    x = self.layer_norm_3(x)
+    x = res_x + x
     x = tfa.activations.gelu(x)
     return x
 
