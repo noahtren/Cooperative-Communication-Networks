@@ -152,7 +152,10 @@ class ConvGenerator(tf.keras.Model):
 
   def call(self, Z, debug=False):
     batch_size = Z.shape[0]
-    x = self.init_Z_embed(Z)
+    if CFG['JUST_VISION']:
+      x = self.init_Z_embed(Z)
+    else:
+      x = Z
     x = x[:, tf.newaxis, tf.newaxis]
     if debug: tf.print(x.shape)
     for Z_embeds, upconv, one_conv, conv, upconv_norm, one_conv_norm, conv_norm in \
@@ -271,8 +274,9 @@ class ConvDiscriminator(tf.keras.Model):
     x = self.out_conv(x)
     x = self.gap(x)
     # remove this when training on graph task
-    x = self.pred(x)
-    x = tf.nn.softmax(x)
+    if CFG['JUST_VISION']:
+      x = self.pred(x)
+      x = tf.nn.softmax(x)
     return x
 
 

@@ -1,4 +1,4 @@
-VISION = False
+VISION = True
 JUST_VISION = False
 CFG = {
   # dataset
@@ -16,10 +16,11 @@ CFG = {
   'decoder_attention_layers': 4,
   'num_heads': 6,
   # the inline if statement is a helpful pattern
-  'initial_lr': 0.00005 if VISION else 0.0005,
+  'initial_lr': 0.000001 if VISION else 0.0005,
   'use_exponential_rate_scheduler': True,
 
   # vision models
+  'JUST_VISION': JUST_VISION,
   'VISION': VISION,
   'vision_model': 'conv', # could also be CPPN
   'DISC_MODEL' : 'ResNet50V2',
@@ -39,17 +40,15 @@ CFG = {
   'use_custom_disc': True,
 
   # training
-  'batch_size': 64,
+  'batch_size': 32,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'graph1',
-  # 'run_name': 'graph_pretrain',
-  # 'load_name': 'graph_pretrain',
-  'load_vision_name': 'slow_normal_experiment_256symbols_bw',
-  'load_graph_name': None
+  'run_name': 'full_may27',
+  'load_vision_name': None,
+  'load_graph_name': 'graph1'
 }
 RESULTS = {}
 

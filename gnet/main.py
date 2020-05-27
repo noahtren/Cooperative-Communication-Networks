@@ -21,10 +21,6 @@ from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
 # TODO: a way to evaluate, at least statistically, how much the training and
 # testing datasets overlap.
 
-# NOTE: consider pre-training the graph autoencoder, and then squishing the
-# vision modules into the latent space afterwards. may be easier to learn than
-# doing everything end-to-end from scratch.
-
 # TRICK: when starting with a pretrained, regularized graph autoencoder, set
 # the learning rate of the autoencoder to something far lower than the visual
 # modules. this encourages the visual element to learn from error while the
@@ -32,15 +28,17 @@ from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
 # freezing those weights entirely, but it seems like a bit of flexibility is
 # helpful -- strategic transfer learning.
 
-# TODO: experiment with other vision-only pipelines and see if a CPPN is what
-# I truly want -- or see if there are more powerful CPPNs that I could use.
-
-
-# TODO: see how small I can make these models
-
 """Documentation of hyperparameters
 
 Regularization for each dense layer in the graph autoencoder
+
+Relative learning rates between different components. The full pipeline
+has 4 distinct components, each with its own potential learning rate!
+
+Parameter size difference between components
+
+Whether each module is pretrained on a smaller subtask, or starting
+from scratch.
 """
 
 
@@ -76,6 +74,14 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
                             batch_shape=[adj.shape[0]], dtype=tf.int32)
 
   return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
+
+
+def update_difficulty(difficulty, epoch_acc):
+  if epoch_acc['values'] > 0.75 and difficulty < 15:
+    difficulty += 1
+  if epoch_acc['values'] < 0.1 and difficulty > 0:
+    difficulty -= 1
+  return difficulty
 
 
 @tf.function
@@ -134,7 +140,13 @@ def dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels,
     Z = models['generator'][0](x)
     x = models['discriminator'][0](Z)
   adj_pred, nf_pred = models['decoder'][0](x)
-  print(f"Dummy batch completed. Output shapes are printed")
+  print(f"Dummy batch completed.")
+  print("Input shapes::")
+  print(f"adj_labels: {batch['adj_labels'].shape}")
+  for key, tensor in batch['nf_labels'].items():
+    print(f"nf_labels [{key}]: {tensor.shape}")
+  print(f"num_nodes: {batch['num_nodes'].shape}")
+  print("Output shapes::")
   print(f"adj_pred: {adj_pred.shape}")
   for key, tensor in nf_pred.items():
     print(f"nf_pred [{key}]: {tensor.shape}")
@@ -172,9 +184,11 @@ if __name__ == "__main__":
     models['discriminator'] = [discriminator, tf.keras.optimizers.Adam(disc_lr)]
   dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes)
   if CFG['load_graph_name'] is not None:
+    print('Loading graph')
     load_ckpts(models, CFG['load_graph_name'])
   if CFG['load_vision_name'] is not None:
-    load_ckpts(models, CFG['load_vision_name'])
+    print('Loading vision')
+    load_ckpts(models, CFG['load_vision_name'], 'latest')
 
   # ==================== DIFFICULTY AND AUGMENTATION
   noisy_channel = get_noisy_channel()
@@ -249,6 +263,8 @@ if __name__ == "__main__":
     print(f"Train accuracies: {json.dumps(tr_epoch_acc, indent=4)}")
     print(f"Test accuracies: {json.dumps(test_epoch_acc, indent=4)}")
     print(f"Regularizer losses: {json.dumps(reg_loss, indent=4)}")
+    difficulty = update_difficulty(difficulty, tr_epoch_acc)
+    print(f"DIFFICULTY FOR NEXT EPOCH: {difficulty}")
     if CFG['run_name'] != 'NOLOG':
       with train_summary_writer.as_default():
         tf.summary.scalar('loss', tr_epoch_loss, step=e_i)

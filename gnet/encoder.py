@@ -193,5 +193,7 @@ class Encoder(tf.keras.Model):
     x = self.embed({'node_features': node_features})
     for attn_layer in self.attns:
       x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
+    # NOTE: is this data loss? this is a technique taken from sentence embedding
+    # but does it make sense to do this for a graph with a known maximum size?
     x = tf.math.reduce_mean(x, axis=1)
     return x
