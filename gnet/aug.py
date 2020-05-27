@@ -37,7 +37,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def static(imgs, DIFFICULTY):
+  def static(imgs, DIFFICULTY, randomize):
     """Gaussian noise, or "static"
     """
     STATIC_STDDEVS = {
@@ -61,13 +61,14 @@ class DifferentiableAugment:
     img_shape = imgs[0].shape
     batch_size = imgs.shape[0]
     stddev = STATIC_STDDEVS[DIFFICULTY]
+    stddev = tf.random.uniform([], 0, stddev)
     noise = tf.random.normal((batch_size, *img_shape), mean=0, stddev=stddev)
     imgs = imgs + noise
     return imgs
 
 
   @staticmethod
-  def translate(imgs, DIFFICULTY):
+  def translate(imgs, DIFFICULTY, randomize):
     """Shift each img a pixel distance from minval to maxval, using zero padding
     For efficiency, each batch is augmented in the same way, but randomized
     between batches.
@@ -103,7 +104,7 @@ class DifferentiableAugment:
   
 
   @staticmethod
-  def resize(imgs, DIFFICULTY):
+  def resize(imgs, DIFFICULTY, randomize):
     """Resize an image, either shrinking it or growing it. This will cause some
     regions of the image to be occluded, in the case that it is grown.
     """
@@ -136,7 +137,7 @@ class DifferentiableAugment:
   
 
   @staticmethod
-  def fractional_rotate(imgs, DIFFICULTY):
+  def fractional_rotate(imgs, DIFFICULTY, randomize):
     """Rotate images, each with a unique number of radians selected uniformly
     from a range.
     Note: this function is not TPU-friendly
@@ -169,7 +170,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def blur(imgs, DIFFICULTY):
+  def blur(imgs, DIFFICULTY, randomize):
     """Apply blur via a Gaussian convolutional kernel
     """
     STDDEVS = {
@@ -188,11 +189,12 @@ class DifferentiableAugment:
       12: 1.9,
       13: 2.0,
       14: 2.1,
-      15: 2.2
+      15: 2.3
     }
     img_shape = imgs[0].shape
     c = img_shape[2]
     stddev = STDDEVS[DIFFICULTY]
+    stddev = tf.random.uniform([], 0, stddev)
     gauss_kernel = gaussian_k(7, 7, 3, 3, stddev)
 
     # expand dimensions of `gauss_kernel` for `tf.nn.conv2d` signature
@@ -210,7 +212,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def random_scale(imgs, DIFFICULTY):
+  def random_scale(imgs, DIFFICULTY, randomize):
     """Randomly scales all of the values in each channel
     """
     MULTIPLY_SCALES = {
@@ -229,7 +231,7 @@ class DifferentiableAugment:
       12: [0.44, 1.46],
       13: [0.42, 1.48],
       14: [0.4, 1.5],
-      15: [0.4, 1.5],
+      15: [0.35, 1.6],
     }
     channels = imgs.shape[-1]
     minscale, maxscale = MULTIPLY_SCALES[DIFFICULTY]
@@ -239,7 +241,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def cutout(imgs, DIFFICULTY):
+  def cutout(imgs, DIFFICULTY, randomize):
     MASK_PERCENT = {
       0: 0.00,
       1: 0.075,
@@ -258,8 +260,10 @@ class DifferentiableAugment:
       14: 0.38,
       15: 0.4,
     }
-    y_size = tf.cast(imgs.shape[1] * MASK_PERCENT[DIFFICULTY] / 2, tf.int32) * 2
-    x_size = tf.cast(imgs.shape[2] * MASK_PERCENT[DIFFICULTY] / 2, tf.int32) * 2
+    y_size = tf.random.uniform([], 0, MASK_PERCENT[DIFFICULTY])
+    x_size = tf.random.uniform([], 0, MASK_PERCENT[DIFFICULTY])
+    y_size = tf.cast(imgs.shape[1] * x_size / 2, tf.int32) * 2
+    x_size = tf.cast(imgs.shape[2] * y_size / 2, tf.int32) * 2
     for _ in range(2):
       imgs = tfa.image.random_cutout(
         imgs,
@@ -268,7 +272,7 @@ class DifferentiableAugment:
     return imgs
 
   @staticmethod
-  def sharp_tanh(imgs, DIFFICULTY):
+  def sharp_tanh(imgs, DIFFICULTY, randomize):
     TANH_AMT = {
       0: 1.0,
       1: 1.1,
@@ -287,7 +291,8 @@ class DifferentiableAugment:
       14: 2.4,
       15: 2.5,
     }
-    imgs = tf.nn.tanh(imgs * TANH_AMT[DIFFICULTY]) * 1.31
+    tanh_amt = tf.random.uniform([], 0, TANH_AMT[DIFFICULTY])
+    imgs = tf.nn.tanh(imgs * tanh_amt) * 1.31
     return imgs
 
 
@@ -304,6 +309,7 @@ def get_noisy_channel(func_names=[
   """Return a function that adds noise to a batch of images, conditioned on a
   difficulty value.
   """
+  @tf.function
   def noise_pipeline(images, funcs, DIFFICULTY):
     """Apply a series of functions to images, in order
     """
@@ -311,9 +317,7 @@ def get_noisy_channel(func_names=[
       return images
     else:
       for func in funcs:
-        this_difficulty = random.randint(0, DIFFICULTY)
-        if this_difficulty != 0:
-          images = func(images, this_difficulty)
+        images = func(images, DIFFICULTY, randomize=True)
       return images
   funcs = []
   for func_name in func_names:
