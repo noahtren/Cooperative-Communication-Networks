@@ -38,17 +38,31 @@ def make_sliding_window_data(points:List[int], steps_between:int):
   return data
 
 
+def circle_crop(img):
+  y_dim = img.shape[0]
+  x_dim = img.shape[1]
+  coords = tf.where(tf.ones((y_dim, x_dim)))
+  coords = tf.cast(tf.reshape(coords, (y_dim, x_dim, 2)), tf.float32)
+  dists = tf.stack([coords[:, :, 0] - y_dim / 2,
+                    coords[:, :, 1] - x_dim / 2], axis=-1)
+  r = tf.sqrt(tf.math.reduce_sum(dists ** 2, axis=-1))
+  use_idxs = r < y_dim / 2
+  img = tf.where(use_idxs[..., tf.newaxis], img, tf.zeros_like(img))
+  return img
+
+
 if __name__ == "__main__":
-  data = make_sliding_window_data([6,17,18,6], 30)
+  data = make_sliding_window_data([3,8,9,3], 30)
   generator = Generator()
   generator(tf.expand_dims(data[0], 0))
   models = {'generator': [generator, 0]}
   load_ckpts(models, CFG['load_name'], 'latest')
-  writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=10)
+  writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
   for i, val in tqdm(enumerate(data)):
     val = tf.expand_dims(val, 0)
     img = generator(val)
     img = tf.squeeze((img + 1) / 2)
     img = tf.cast(img * 255, tf.uint8)
+    img = circle_crop(img)
     writer.append_data(np.array(img))
   writer.close()
