@@ -133,7 +133,7 @@ class ConvGenerator(tf.keras.Model):
       # TODO: note that this happened
       # TODO: consider embedding pixel locations as well
       Z_filters = max([8, filters // 4])
-      Z_embeds = [tf.keras.layers.Dense(128, **dense_regularization) for _ in range(4)] + \
+      Z_embeds = [tf.keras.layers.Dense(256, **dense_regularization) for _ in range(4)] + \
         [tf.keras.layers.Dense(Z_filters, **dense_regularization)]
       self.upconvs = [upconv] + self.upconvs
       self.one_convs = [one_conv] + self.one_convs
@@ -167,6 +167,7 @@ class ConvGenerator(tf.keras.Model):
       y_dim, x_dim = x.shape[1], x.shape[2]
       loc = generate_scaled_coordinate_hints(batch_size, y_dim, x_dim)
       _z = Z
+      # TODO: consider adding normalization to z embedding stack
       for Z_embed in Z_embeds:
         _z = Z_embed(_z)
         _z = tf.nn.swish(_z)
@@ -290,8 +291,8 @@ def get_pretrained_info():
   elif CFG['pretrained_disc'] == 'ResNet50V2':
     ModelFunc = tf.keras.applications.ResNet50V2
     # PerceptorLayerName = 'conv2_block3_out' # 4x downscale
-    # PerceptorLayerName = 'conv3_block4_out' # 8x downscale
-    PerceptorLayerName = 'conv4_block6_out' # 16x downscale
+    PerceptorLayerName = 'conv3_block4_out' # 8x downscale
+    # PerceptorLayerName = 'conv4_block6_out' # 16x downscale
     # PerceptorLayerName = 'conv5_block2_out' # 32x downscale
   elif CFG['pretrained_disc'] == 'VGG16':
     ModelFunc = tf.keras.applications.VGG16
@@ -380,7 +381,7 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
   return error
 
 
-def perceptual_loss(features, max_pairs=1_000):
+def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
   """Returns a negative value, where higher magnitudes describe further distances.
   This is to encourage samples to be perceptually more distant from each other.
   i.e., they are repelled from each other.
@@ -399,7 +400,10 @@ def perceptual_loss(features, max_pairs=1_000):
   feature_pairs = tf.gather(features, pair_idxs)
   diffs = feature_pairs[:, 0] - feature_pairs[:, 1]
   diffs = tf.math.reduce_mean(tf.abs(diffs), axis=-1)
-  percept_loss = tf.math.reduce_mean(diffs) * -1
+
+  percept_loss = tf.math.reduce_mean(diffs)
+  percept_loss = tf.sqrt(percept_loss)
+  percept_loss = percept_loss * MULTIPLIER
   return percept_loss
 
 
