@@ -10,10 +10,12 @@ import matplotlib.pyplot as plt
 from graph_data import TensorGraph
 from encoder import Encoder 
 from decoder import GraphDecoder
-from vision import CPPN, ImageDecoder
+from vision import Generator, Decoder, Perceptor, vector_distance_loss, perceptual_loss
 from graph_match import minimum_loss_permutation
 from cfg import CFG
-from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
+from aug import get_noisy_channel
+from ml_utils import dense_regularization, update_data_dict, normalize_data_dict, \
+  load_ckpts, save_ckpts
 
 
 # TODO: a way to evaluate, at least statistically, how much the training and
@@ -76,42 +78,47 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
   return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
 
 
-def predict(models, batch):
-  x = models['encoder'][0](batch)
-  if 'generator' in models:
-    img = models['generator'][0](x)
-    x = models['discriminator'][0](img)
-  adj_pred, nf_pred = models['decoder'][0](x)
-  batch_loss, acc = minimum_loss_permutation(
-    batch['adj_labels'],
-    batch['nf_labels'],
-    adj_pred,
-    nf_pred
-  )
-  return batch_loss, acc
-
-
 @tf.function
-def train_step(models, batch, test=False):
-  if test:
-    batch_loss, acc = predict(models, batch)
-    return batch_loss, acc
-  else:
-    reg_loss = {}
-    with tf.GradientTape(persistent=True) as tape:
-      batch_loss, acc = predict(models, batch)
-      for name, (model, _) in models.items():
-        reg_loss[name] = tf.math.reduce_sum(model.losses)
-        batch_loss += reg_loss[name]
-    for model, optim in models.values():
-      grads = tape.gradient(batch_loss, model.trainable_variables)
-      optim.apply_gradients(zip(grads, model.trainable_variables))
+def train_step(models, perceptor, batch, noisy_channel, difficulty, test=False):
+  reg_loss = {}
+  with tf.GradientTape(persistent=True) as tape:
+    batch_loss = 0
+    Z = models['encoder'][0](batch)
+    if CFG['VISION']:
+      imgs = models['generator'][0](Z)
+      if CFG['use_perceptual_loss']:
+        percepts = perceptor(imgs)
+        percept_loss = perceptual_loss(percepts)
+        reg_loss['perceptual'] = percept_loss
+        batch_loss += percept_loss
+      if CFG['use_distance_loss']:
+        percepts = perceptor(imgs)
+        dist_loss = vector_distance_loss(symbols, imgs)
+        reg_loss['distance'] = dist_loss
+        batch_loss += dist_loss
+      imgs = noisy_channel(imgs, difficulty)
+      Z = models['discriminator'][0](imgs)
+      # end vision
+    adj_pred, nf_pred = models['decoder'][0](Z)
+    batch_loss, acc = minimum_loss_permutation(
+      batch['adj_labels'],
+      batch['nf_labels'],
+      adj_pred,
+      nf_pred
+    )
+    for name, (model, _) in models.items():
+      reg_loss[name] = tf.math.reduce_sum(model.losses)
+      batch_loss += reg_loss[name]
+  if not test:
+    for module, optim in models.values():
+      grads = tape.gradient(batch_loss, module.trainable_variables)
+      optim.apply_gradients(zip(grads, module.trainable_variables))
   return batch_loss, acc, reg_loss
 
 
-def dummy_batch(models,
-                tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes):
-  """Only for graph model. Used to populate weights before loading.
+def dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels,
+                tr_nf_labels, tr_num_nodes):
+  """Used to populate weights before loading.
   """
   batch = {
     'adj': tr_adj[:CFG['batch_size']],
@@ -123,7 +130,14 @@ def dummy_batch(models,
     'num_nodes': tr_num_nodes[:CFG['batch_size']],
   }
   x = models['encoder'][0](batch)
+  if CFG['VISION']:
+    Z = models['generator'][0](x)
+    x = models['discriminator'][0](Z)
   adj_pred, nf_pred = models['decoder'][0](x)
+  print(f"Dummy batch completed. Output shapes are printed")
+  print(f"adj_pred: {adj_pred.shape}")
+  for key, tensor in nf_pred.items():
+    print(f"nf_pred [{key}]: {tensor.shape}")
 
 
 if __name__ == "__main__":
@@ -145,18 +159,26 @@ if __name__ == "__main__":
     'encoder': [encoder, tf.keras.optimizers.Adam(lr)],
     'decoder': [decoder, tf.keras.optimizers.Adam(lr)],
   }
+  perceptor = None
   if CFG['VISION']:
-    generator = CPPN(**CFG)
-    discriminator = modify_decoder(ImageDecoder)
+    generator = Generator()
+    discriminator = Decoder()
+    perceptor = Perceptor()
     gen_lr = tf.keras.optimizers.schedules.ExponentialDecay(
       CFG['generator_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
     disc_lr = tf.keras.optimizers.schedules.ExponentialDecay(
       CFG['discriminator_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
     models['generator'] = [generator, tf.keras.optimizers.Adam(gen_lr)]
     models['discriminator'] = [discriminator, tf.keras.optimizers.Adam(disc_lr)]
-  if CFG['load_name'] is not None:
-    dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes)
-    load_ckpts(models, CFG['load_name'])
+  dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes)
+  if CFG['load_graph_name'] is not None:
+    load_ckpts(models, CFG['load_graph_name'])
+  if CFG['load_vision_name'] is not None:
+    load_ckpts(models, CFG['load_vision_name'])
+
+  # ==================== DIFFICULTY AND AUGMENTATION
+  noisy_channel = get_noisy_channel()
+  difficulty = 0
 
   # ==================== LOGGING ====================
   log_dir = f"logs/{CFG['run_name']}"
@@ -195,7 +217,7 @@ if __name__ == "__main__":
           name, tensor in tr_nf_labels.items()},
         'num_nodes': tr_num_nodes[start_b:end_b],
       }
-      batch_loss, batch_acc, batch_reg_loss = train_step(models, batch)
+      batch_loss, batch_acc, batch_reg_loss = train_step(models, perceptor, batch, noisy_channel, difficulty)
       tr_epoch_loss += batch_loss
       update_data_dict(tr_epoch_acc, batch_acc)
       update_data_dict(reg_loss, batch_reg_loss)
@@ -213,7 +235,7 @@ if __name__ == "__main__":
           name, tensor in test_nf_labels.items()},
         'num_nodes': test_num_nodes[start_b:end_b],
       }
-      batch_loss, batch_acc = train_step(models, batch, test=True)
+      batch_loss, batch_acc, _ = train_step(models, perceptor, batch, noisy_channel, difficulty, test=True)
       test_epoch_loss += batch_loss
       update_data_dict(test_epoch_acc, batch_acc)
       print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_adj.shape[0]}] loss {batch_loss}", end="\r")

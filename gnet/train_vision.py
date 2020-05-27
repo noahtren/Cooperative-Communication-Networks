@@ -88,7 +88,7 @@ def update_difficulty(difficulty, epoch_loss, epoch_acc):
 
 
 @tf.function
-def train_step(models, perceptor, symbols, noisy_channel, difficulty, e_i):
+def train_step(models, perceptor, symbols, noisy_channel, difficulty):
   reg_loss = {}
   with tf.GradientTape(persistent=True) as tape:
     batch_loss = 0
@@ -105,6 +105,8 @@ def train_step(models, perceptor, symbols, noisy_channel, difficulty, e_i):
       batch_loss += dist_loss
     imgs = noisy_channel(imgs, difficulty)
     predictions = models['discriminator'][0](imgs)
+    # two kinds of loss score!
+    batch_loss += tf.keras.losses.mean_squared_error(symbols, predictions)
     batch_loss += tf.keras.losses.categorical_crossentropy(symbols, predictions, label_smoothing=CFG['label_smoothing'])
     for name, (model, _) in models.items():
       reg_loss[name] = tf.math.reduce_sum(model.losses)
@@ -154,7 +156,7 @@ def main():
       end_b = min([CFG['num_samples'], (b_i + 1) * CFG['batch_size']])
       start_b = end_b - CFG['batch_size']
       batch = data[start_b:end_b]
-      batch_loss, batch_acc, batch_reg_loss = train_step(models, perceptor, batch, noisy_channel, difficulty, e_i)
+      batch_loss, batch_acc, batch_reg_loss = train_step(models, perceptor, batch, noisy_channel, difficulty)
       epoch_loss += batch_loss
       acc += batch_acc
       update_data_dict(reg_loss, batch_reg_loss)
@@ -184,7 +186,6 @@ def main():
       plt.clf()
       plt.cla()
       plt.close()
-
 
 
 if __name__ == "__main__":
