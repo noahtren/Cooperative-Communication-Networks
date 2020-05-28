@@ -31,6 +31,7 @@ class GlobalAttention(tf.keras.layers.Layer):
 
   def call(self, x):
     start_x = tf.nn.dropout(x, 0.1)
+    
     # ==================== GLOBAL ATTENTION ====================
 
     # linear transformation of input embeddings
@@ -53,6 +54,7 @@ class GlobalAttention(tf.keras.layers.Layer):
     x = start_x + x
     x = tfa.activations.gelu(x)
     res_x = x
+    res_x_2 = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
@@ -62,7 +64,7 @@ class GlobalAttention(tf.keras.layers.Layer):
 
     x = self.w_out_3(x)
     x = self.layer_norm_3(x)
-    x = res_x + x
+    x = res_x_2 + res_x + x
     x = tfa.activations.gelu(x)
     return x
 
@@ -90,7 +92,14 @@ class GraphDecoder(tf.keras.Model):
     super(GraphDecoder, self).__init__()
     self.max_nodes = max_nodes
 
+    # expanding from hidden state
     self.expand_w = tf.keras.layers.Dense(max_nodes * hidden_size, **dense_regularization)
+    # pos embeds
+    self.pos_embeds = [tf.keras.layers.Dense(128, **dense_regularization) for _ in range(3)]
+    self.pos_norms = [tf.keras.layers.LayerNormalization() for _ in range(3)]
+    self.combine_pos = tf.keras.layers.Dense(hidden_size, **dense_regularization)
+    self.combine_pos_norm = tf.keras.layers.LayerNormalization()
+    # attention
     self.global_attns = [GlobalAttention(num_heads, hidden_size) for _ in range(decoder_attention_layers)]
 
     self.adj_w = tf.keras.layers.Dense(max_nodes, name='adjacency', **dense_regularization)
@@ -113,6 +122,18 @@ class GraphDecoder(tf.keras.Model):
     expanded_x = self.expand_w(Z)
     expanded_x = tfa.activations.gelu(expanded_x)
     x = tf.reshape(expanded_x, [batch_size, self.max_nodes, -1])
+
+    # Positional embedding, simply as a hint so that nodes know
+    # the index of other nodes when passing messages
+    pos = tf.tile(tf.range(x.shape[1])[tf.newaxis], [x.shape[0], 1])
+    pos = tf.cast(pos, tf.float32)[..., tf.newaxis] / x.shape[1]
+    for pos_embed, pos_norm in zip(self.pos_embeds, self.pos_norms):
+      pos = pos_embed(pos)
+      pos = pos_norm(pos)
+
+    x = tf.concat([pos, x], axis=-1)
+    x = self.combine_pos(x)
+    x = self.combine_pos_norm(x)
 
     # local and global attention
     for attn_layer in self.global_attns:

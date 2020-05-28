@@ -1,4 +1,4 @@
-VISION = True
+VISION = False
 JUST_VISION = False
 CFG = {
   # dataset
@@ -16,7 +16,7 @@ CFG = {
   'decoder_attention_layers': 4,
   'num_heads': 6,
   # the inline if statement is a helpful pattern
-  'initial_lr': 0.000001 if VISION else 0.0005,
+  'initial_lr': 0.000001 if VISION else 0.0001,
   'use_exponential_rate_scheduler': True,
 
   # vision models
@@ -40,15 +40,17 @@ CFG = {
   'use_custom_disc': True,
 
   # training
-  'batch_size': 16,
+  'batch_size': 32,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'full_may27_4',
-  'load_vision_name': 'full_may27_3',
-  'load_graph_name': 'full_may27_3'
+  'run_name': 'graph_pretrain_4',
+  # 'load_vision_name': 'full_may27_4',
+  # 'load_graph_name': 'full_may27_4'
+  'load_graph_name': None,
+  'load_vision_name': None
 }
 RESULTS = {}
 

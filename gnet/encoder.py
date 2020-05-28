@@ -98,10 +98,6 @@ class GlobalLocalAttention(tf.keras.layers.Layer):
       num_nodes: a tensor of shape [batch_size] stating the number of nodes per
         input graph
     """
-    # TODO: may need to apply masking to bottom rows as they are used in dot-product,
-    # but they shouldn't be. it seems like the only way to fix this is
-    # by masking right *before* the dot product, and then again before softmaxing.
-
     x = inputs['x']
     start_x = tf.nn.dropout(x, 0.1)
     num_nodes = inputs['num_nodes']
@@ -193,7 +189,10 @@ class Encoder(tf.keras.Model):
     x = self.embed({'node_features': node_features})
     for attn_layer in self.attns:
       x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
-    # NOTE: is this data loss? this is a technique taken from sentence embedding
-    # but does it make sense to do this for a graph with a known maximum size?
+    # pad based on num_nodes
+    output_mask = tf.sequence_mask(num_nodes, maxlen=x.shape[1])
+    x = tf.where(output_mask[..., tf.newaxis], x, tf.zeros_like(x))
     x = tf.math.reduce_mean(x, axis=1)
+    # now scale up based on how many nodes were set to 0
+    x = x * tf.cast(5 / num_nodes, tf.float32)[:, tf.newaxis]
     return x
