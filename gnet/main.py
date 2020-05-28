@@ -77,7 +77,7 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
 
 
 def update_difficulty(difficulty, epoch_acc):
-  if epoch_acc['values'] > 0.90 and difficulty < 15:
+  if epoch_acc['values'] > 0.925 and difficulty < 15:
     difficulty += 1
   if epoch_acc['values'] < 0.1 and difficulty > 0:
     difficulty -= 1
@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
   # ==================== DIFFICULTY AND AUGMENTATION
   noisy_channel = get_noisy_channel()
-  difficulty = 0
+  difficulty = tf.convert_to_tensor(0)
 
   # ==================== LOGGING ====================
   log_dir = f"logs/{CFG['run_name']}"

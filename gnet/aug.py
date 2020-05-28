@@ -40,27 +40,27 @@ class DifferentiableAugment:
   def static(imgs, DIFFICULTY, randomize):
     """Gaussian noise, or "static"
     """
-    STATIC_STDDEVS = {
-      0: 0.00,
-      1: 0.03,
-      2: 0.06,
-      3: 0.1,
-      4: 0.13,
-      5: 0.16,
-      6: 0.2,
-      7: 0.23,
-      8: 0.26,
-      9: 0.3,
-      10: 0.33,
-      11: 0.36,
-      12: 0.4,
-      13: 0.43,
-      14: 0.46,
-      15: 0.50,
-    }
+    STATIC_STDDEVS = [
+      0.00,
+      0.03,
+      0.06,
+      0.1,
+      0.13,
+      0.16,
+      0.2,
+      0.23,
+      0.26,
+      0.3,
+      0.33,
+      0.36,
+      0.4,
+      0.43,
+      0.46,
+      0.50,
+    ]
     img_shape = imgs[0].shape
     batch_size = imgs.shape[0]
-    stddev = STATIC_STDDEVS[DIFFICULTY]
+    stddev = tf.gather(STATIC_STDDEVS, DIFFICULTY)
     stddev = tf.random.uniform([], 0, stddev)
     noise = tf.random.normal((batch_size, *img_shape), mean=0, stddev=stddev)
     imgs = imgs + noise
@@ -73,30 +73,30 @@ class DifferentiableAugment:
     For efficiency, each batch is augmented in the same way, but randomized
     between batches.
     """
-    SHIFT_PERCENTS = {
-      0: 0.00,
-      1: 0.025,
-      2: 0.05,
-      3: 0.07,
-      4: 0.09,
-      5: 0.1,
-      6: 0.11,
-      7: 0.12,
-      8: 0.13,
-      9: 0.14,
-      10: 0.15,
-      11: 0.16,
-      12: 0.17,
-      13: 0.18,
-      14: 0.19,
-      15: 0.20
-    }
+    SHIFT_PERCENTS = [
+      0.00,
+      0.025,
+      0.05,
+      0.07,
+      0.09,
+      0.1,
+      0.11,
+      0.12,
+      0.13,
+      0.14,
+      0.15,
+      0.16,
+      0.17,
+      0.18,
+      0.19,
+      0.20
+    ]
     img_shape = imgs[0].shape
     batch_size = imgs.shape[0]
-    max_shift_percent = SHIFT_PERCENTS[DIFFICULTY]
+    max_shift_percent = tf.gather(SHIFT_PERCENTS, DIFFICULTY)
     average_img_dim = (img_shape[0] + img_shape[1]) / 2
-    minval = int(round(max_shift_percent * average_img_dim * -1))
-    maxval = int(round(max_shift_percent * average_img_dim))
+    minval = tf.cast(max_shift_percent * average_img_dim * -1, tf.int32)
+    maxval = tf.cast(max_shift_percent * average_img_dim, tf.int32)
     shifts = tf.random.uniform([imgs.shape[0], 2], minval=minval, maxval=maxval + 1, dtype=tf.int32)
     shifts = tf.cast(shifts, tf.float32)
     imgs = tfa.image.translate(imgs, shifts, interpolation='BILINEAR')
@@ -108,27 +108,27 @@ class DifferentiableAugment:
     """Resize an image, either shrinking it or growing it. This will cause some
     regions of the image to be occluded, in the case that it is grown.
     """
-    RESIZE_SCALES = {
-      0: [1, 1],
-      1: [0.9, 1.1],
-      2: [0.85, 1.15],
-      3: [0.8, 1.2],
-      4: [0.75, 1.25],
-      5: [0.7, 1.3],
-      6: [0.65, 1.325],
-      7: [0.6, 1.35],
-      8: [0.55, 1.375],
-      9: [0.50, 1.4],
-      10: [0.48, 1.42],
-      11: [0.46, 1.44],
-      12: [0.44, 1.46],
-      13: [0.42, 1.48],
-      14: [0.4, 1.5],
-      15: [0.4, 1.5],
-    }
+    RESIZE_SCALES = [
+      [1, 1],
+      [0.9, 1.1],
+      [0.85, 1.15],
+      [0.8, 1.2],
+      [0.75, 1.25],
+      [0.7, 1.3],
+      [0.65, 1.325],
+      [0.6, 1.35],
+      [0.55, 1.375],
+      [0.50, 1.4],
+      [0.48, 1.42],
+      [0.46, 1.44],
+      [0.44, 1.46],
+      [0.42, 1.48],
+      [0.4, 1.5],
+      [0.4, 1.5],
+    ]
     img_shape = imgs[0].shape
-    minscale, maxscale = RESIZE_SCALES[DIFFICULTY]
-    scales = tf.random.uniform([2], minval=minscale, maxval=maxscale)
+    scales = tf.gather(RESIZE_SCALES, DIFFICULTY)
+    scales = tf.random.uniform([2], minval=scales[0], maxval=scales[1])
     target_width = tf.cast(scales[0] * img_shape[1], tf.int32)
     target_height = tf.cast(scales[1] * img_shape[0], tf.int32)
     imgs = tf.image.resize(imgs, (target_height, target_width))
@@ -143,26 +143,26 @@ class DifferentiableAugment:
     Note: this function is not TPU-friendly
     """
     pi = 3.14159265
-    RADIANS = {
-      0: 0,
-      1: 1 * pi / 30,
-      2: 2 * pi / 30,
-      3: 3 * pi / 30,
-      4: 4 * pi / 30,
-      5: 5 * pi / 30,
-      6: 6 * pi / 30,
-      7: 7 * pi / 30,
-      8: 8 * pi / 30,
-      9: 9 * pi / 30,
-      10: 9.5 * pi / 30,
-      11: 10 * pi / 30,
-      12: 10.5 * pi / 30,
-      13: 11 * pi / 30,
-      14: 11.5 * pi / 30,
-      15: 12 * pi / 30,
-    }
-    min_angle = RADIANS[DIFFICULTY] * -1
-    max_angle = RADIANS[DIFFICULTY]
+    RADIANS = [
+      0,
+      1 * pi / 30,
+      2 * pi / 30,
+      3 * pi / 30,
+      4 * pi / 30,
+      5 * pi / 30,
+      6 * pi / 30,
+      7 * pi / 30,
+      8 * pi / 30,
+      9 * pi / 30,
+      9.5 * pi / 30,
+      10 * pi / 30,
+      10.5 * pi / 30,
+      11 * pi / 30,
+      11.5 * pi / 30,
+      12 * pi / 30,
+    ]
+    min_angle = tf.gather(RADIANS, DIFFICULTY) * -1
+    max_angle = tf.gather(RADIANS, DIFFICULTY)
     batch_size = imgs.shape[0]
     angles = tf.random.uniform([batch_size], minval=min_angle, maxval=max_angle)
     imgs = tfa.image.rotate(imgs, angles, interpolation='BILINEAR')
@@ -173,27 +173,27 @@ class DifferentiableAugment:
   def blur(imgs, DIFFICULTY, randomize):
     """Apply blur via a Gaussian convolutional kernel
     """
-    STDDEVS = {
-      0: 0.01,
-      1: 0.2,
-      2: 0.4,
-      3: 0.6,
-      4: 0.8,
-      5: 0.9,
-      6: 1.0,
-      7: 1.25,
-      8: 1.5,
-      9: 1.6,
-      10: 1.7,
-      11: 1.8,
-      12: 1.9,
-      13: 2.0,
-      14: 2.1,
-      15: 2.3
-    }
+    STDDEVS = [
+      0.01,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      1.0,
+      1.25,
+      1.5,
+      1.6,
+      1.7,
+      1.8,
+      1.9,
+      2.0,
+      2.1,
+      2.3
+    ]
     img_shape = imgs[0].shape
     c = img_shape[2]
-    stddev = STDDEVS[DIFFICULTY]
+    stddev = tf.gather(STDDEVS, DIFFICULTY)
     stddev = tf.random.uniform([], 0, stddev)
     gauss_kernel = gaussian_k(7, 7, 3, 3, stddev)
 
@@ -215,55 +215,56 @@ class DifferentiableAugment:
   def random_scale(imgs, DIFFICULTY, randomize):
     """Randomly scales all of the values in each channel
     """
-    MULTIPLY_SCALES = {
-      0: [1, 1],
-      1: [0.9, 1.1],
-      2: [0.85, 1.15],
-      3: [0.8, 1.2],
-      4: [0.75, 1.25],
-      5: [0.7, 1.3],
-      6: [0.65, 1.325],
-      7: [0.6, 1.35],
-      8: [0.55, 1.375],
-      9: [0.50, 1.4],
-      10: [0.48, 1.42],
-      11: [0.46, 1.44],
-      12: [0.44, 1.46],
-      13: [0.42, 1.48],
-      14: [0.4, 1.5],
-      15: [0.35, 1.6],
-    }
+    MULTIPLY_SCALES = [
+      [1, 1],
+      [0.9, 1.1],
+      [0.85, 1.15],
+      [0.8, 1.2],
+      [0.75, 1.25],
+      [0.7, 1.3],
+      [0.65, 1.325],
+      [0.6, 1.35],
+      [0.55, 1.375],
+      [0.50, 1.4],
+      [0.48, 1.42],
+      [0.46, 1.44],
+      [0.44, 1.46],
+      [0.42, 1.48],
+      [0.4, 1.5],
+      [0.35, 1.6],
+    ]
     channels = imgs.shape[-1]
-    minscale, maxscale = MULTIPLY_SCALES[DIFFICULTY]
-    scales = tf.random.uniform([channels], minval=minscale, maxval=maxscale)
+    scales = tf.gather(MULTIPLY_SCALES, DIFFICULTY)
+    scales = tf.random.uniform([channels], minval=scales[0], maxval=scales[1])
     imgs = imgs * scales
     return imgs
 
 
   @staticmethod
   def cutout(imgs, DIFFICULTY, randomize):
-    MASK_PERCENT = {
-      0: 0.00,
-      1: 0.075,
-      2: 0.1,
-      3: 0.125,
-      4: 0.15,
-      5: 0.175,
-      6: 0.2,
-      7: 0.225,
-      8: 0.25,
-      9: 0.275,
-      10: 0.3,
-      11: 0.325,
-      12: 0.34,
-      13: 0.36,
-      14: 0.38,
-      15: 0.4,
-    }
-    y_size = tf.random.uniform([], 0, MASK_PERCENT[DIFFICULTY])
-    x_size = tf.random.uniform([], 0, MASK_PERCENT[DIFFICULTY])
-    y_size = tf.cast(imgs.shape[1] * x_size / 2, tf.int32) * 2
-    x_size = tf.cast(imgs.shape[2] * y_size / 2, tf.int32) * 2
+    MASK_PERCENT = [
+      0.00,
+      0.075,
+      0.1,
+      0.125,
+      0.15,
+      0.175,
+      0.2,
+      0.225,
+      0.25,
+      0.275,
+      0.3,
+      0.325,
+      0.34,
+      0.36,
+      0.38,
+      0.4,
+    ]
+    mask_percent = tf.gather(MASK_PERCENT, DIFFICULTY)
+    y_size = tf.random.uniform([], 0, mask_percent)
+    x_size = tf.random.uniform([], 0, mask_percent)
+    y_size = tf.cast(imgs.shape[1] * y_size / 2, tf.int32) * 2
+    x_size = tf.cast(imgs.shape[2] * x_size / 2, tf.int32) * 2
     for _ in range(2):
       imgs = tfa.image.random_cutout(
         imgs,
@@ -273,25 +274,26 @@ class DifferentiableAugment:
 
   @staticmethod
   def sharp_tanh(imgs, DIFFICULTY, randomize):
-    TANH_AMT = {
-      0: 1.0,
-      1: 1.1,
-      2: 1.2,
-      3: 1.3,
-      4: 1.4,
-      5: 1.5,
-      6: 1.6,
-      7: 1.7,
-      8: 1.8,
-      9: 1.9,
-      10: 2.0,
-      11: 2.1,
-      12: 2.2,
-      13: 2.3,
-      14: 2.4,
-      15: 2.5,
-    }
-    tanh_amt = tf.random.uniform([], 0, TANH_AMT[DIFFICULTY])
+    TANH_AMT = [
+      1.0,
+      1.1,
+      1.2,
+      1.3,
+      1.4,
+      1.5,
+      1.6,
+      1.7,
+      1.8,
+      1.9,
+      2.0,
+      2.1,
+      2.2,
+      2.3,
+      2.4,
+      2.5,
+    ]
+    tanh_amt = tf.gather(TANH_AMT, DIFFICULTY)
+    tanh_amt = tf.random.uniform([], 0, tanh_amt)
     imgs = tf.nn.tanh(imgs * tanh_amt) * 1.31
     return imgs
 
@@ -333,7 +335,8 @@ if __name__ == "__main__":
 
   imgs = tf.random.normal([4, 128, 128, 3])
   channel = get_noisy_channel()
-  for diff in range(16):
+  for diff in tf.range(16):
+    print(diff)
     x = channel(imgs, diff)
     fig, axes = plt.subplots(2, 2)
     # scale x to be readable
