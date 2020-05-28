@@ -40,15 +40,15 @@ CFG = {
   'use_custom_disc': True,
 
   # training
-  'batch_size': 32,
+  'batch_size': 16,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'full_may27',
-  'load_vision_name': None,
-  'load_graph_name': 'graph1'
+  'run_name': 'full_may27_3',
+  'load_vision_name': 'full_may27_2',
+  'load_graph_name': 'full_may27_2'
 }
 RESULTS = {}
 

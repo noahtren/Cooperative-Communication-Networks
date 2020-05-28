@@ -77,48 +77,58 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
 
 
 def update_difficulty(difficulty, epoch_acc):
-  if epoch_acc['values'] > 0.75 and difficulty < 15:
+  if epoch_acc['values'] > 0.90 and difficulty < 15:
     difficulty += 1
   if epoch_acc['values'] < 0.1 and difficulty > 0:
     difficulty -= 1
   return difficulty
 
 
-@tf.function
-def train_step(models, perceptor, batch, noisy_channel, difficulty, test=False):
+def predict(models, perceptor, batch, noisy_channel, difficulty):
   reg_loss = {}
+  batch_loss = 0
+  Z = models['encoder'][0](batch)
+  if CFG['VISION']:
+    imgs = models['generator'][0](Z)
+    if CFG['use_perceptual_loss']:
+      percepts = perceptor(imgs)
+      percept_loss = perceptual_loss(percepts)
+      reg_loss['perceptual'] = percept_loss
+      batch_loss += percept_loss
+    if CFG['use_distance_loss']:
+      percepts = perceptor(imgs)
+      dist_loss = vector_distance_loss(symbols, imgs)
+      reg_loss['distance'] = dist_loss
+      batch_loss += dist_loss
+    imgs = noisy_channel(imgs, difficulty)
+    Z = models['discriminator'][0](imgs)
+    # end vision
+  adj_pred, nf_pred = models['decoder'][0](Z)
+  batch_loss, acc = minimum_loss_permutation(
+    batch['adj_labels'],
+    batch['nf_labels'],
+    adj_pred,
+    nf_pred
+  )
+  for name, (model, _) in models.items():
+    reg_loss[name] = tf.math.reduce_sum(model.losses)
+    batch_loss += reg_loss[name]
+  return batch_loss, acc, reg_loss
+
+
+@tf.function
+def train_step(models, perceptor, batch, noisy_channel, difficulty):
   with tf.GradientTape(persistent=True) as tape:
-    batch_loss = 0
-    Z = models['encoder'][0](batch)
-    if CFG['VISION']:
-      imgs = models['generator'][0](Z)
-      if CFG['use_perceptual_loss']:
-        percepts = perceptor(imgs)
-        percept_loss = perceptual_loss(percepts)
-        reg_loss['perceptual'] = percept_loss
-        batch_loss += percept_loss
-      if CFG['use_distance_loss']:
-        percepts = perceptor(imgs)
-        dist_loss = vector_distance_loss(symbols, imgs)
-        reg_loss['distance'] = dist_loss
-        batch_loss += dist_loss
-      imgs = noisy_channel(imgs, difficulty)
-      Z = models['discriminator'][0](imgs)
-      # end vision
-    adj_pred, nf_pred = models['decoder'][0](Z)
-    batch_loss, acc = minimum_loss_permutation(
-      batch['adj_labels'],
-      batch['nf_labels'],
-      adj_pred,
-      nf_pred
-    )
-    for name, (model, _) in models.items():
-      reg_loss[name] = tf.math.reduce_sum(model.losses)
-      batch_loss += reg_loss[name]
-  if not test:
-    for module, optim in models.values():
-      grads = tape.gradient(batch_loss, module.trainable_variables)
-      optim.apply_gradients(zip(grads, module.trainable_variables))
+    batch_loss, acc, reg_loss = predict(models, perceptor, batch, noisy_channel, difficulty)
+  for module, optim in models.values():
+    grads = tape.gradient(batch_loss, module.trainable_variables)
+    optim.apply_gradients(zip(grads, module.trainable_variables))
+  return batch_loss, acc, reg_loss
+
+
+@tf.function
+def test_step(models, perceptor, batch, noisy_channel, difficulty):
+  batch_loss, acc, reg_loss = predict(models, perceptor, batch, noisy_channel, difficulty)
   return batch_loss, acc, reg_loss
 
 
@@ -200,8 +210,6 @@ if __name__ == "__main__":
   test_log_dir = f"{log_dir}/test"
   train_summary_writer = tf.summary.create_file_writer(train_log_dir)
   test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-  # os.makedirs(train_log_dir)
-  # os.makedirs(test_log_dir)
   current_time = str(datetime.datetime.now())
   CFG['current_time'] = current_time
   with open(os.path.join(log_dir, 'report.json'), 'w+') as f:
@@ -249,11 +257,11 @@ if __name__ == "__main__":
           name, tensor in test_nf_labels.items()},
         'num_nodes': test_num_nodes[start_b:end_b],
       }
-      batch_loss, batch_acc, _ = train_step(models, perceptor, batch, noisy_channel, difficulty, test=True)
+      batch_loss, batch_acc, _ = test_step(models, perceptor, batch, noisy_channel, difficulty)
       test_epoch_loss += batch_loss
       update_data_dict(test_epoch_acc, batch_acc)
       print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_adj.shape[0]}] loss {batch_loss}", end="\r")
-    # END OF EPOCH METRICS
+    # END-OF-EPOCH METRICS
     tr_epoch_loss = tr_epoch_loss / tr_num_batches
     test_epoch_loss = test_epoch_loss / test_num_batches
     tr_epoch_acc = normalize_data_dict(tr_epoch_acc, tr_num_batches)
@@ -274,11 +282,11 @@ if __name__ == "__main__":
         tf.summary.scalar('loss', test_epoch_loss, step=e_i)
         for name, metric in test_epoch_acc.items():
           tf.summary.scalar(name, metric, step=e_i)
-    # SAVING CHECKPOINTS
-    # save_ckpts(models, log_dir, str(e_i))
+    # SAVE CHECKPOINTS
     if test_epoch_loss < best_epoch_loss:
       best_epoch_loss = test_epoch_loss
       save_ckpts(models, log_dir, 'best')
+    # SAVE VISUAL SAMPLE
     if CFG['VISION'] and e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
       sample_idxs = tf.random.uniform([CFG['batch_size']], 0, CFG['num_samples'], tf.int32)
@@ -300,3 +308,6 @@ if __name__ == "__main__":
       axes[1][0].imshow(sample_imgs[2])
       axes[1][1].imshow(sample_imgs[3])
       plt.savefig(f"{e_i}.png")
+      plt.clf()
+      plt.cla()
+      plt.close()

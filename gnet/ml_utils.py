@@ -121,10 +121,11 @@ def load_ckpts(models, load_name, ckpt_name='best'):
     if os.path.exists(model_path):
       model.load_weights(model_path)
       print(f"Loaded weights for {model_name}")
-  if CFG['VISION'] and 'decoder' in models:
-    models['decoder'][0].expand_w = \
-      tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
-    print("Overrode decoder input layer (for vision compatibility)")
+  # TODO: fix this
+  # if CFG['VISION'] and 'decoder' in models:
+  #   models['decoder'][0].expand_w = \
+  #     tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
+  #   print("Overrode decoder input layer (for vision compatibility)")
 
 
 def save_ckpts(models, log_dir, ckpt_name:str):
