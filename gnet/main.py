@@ -120,6 +120,9 @@ def predict(models, perceptor, batch, noisy_channel, difficulty):
 def train_step(models, perceptor, batch, noisy_channel, difficulty):
   with tf.GradientTape(persistent=True) as tape:
     batch_loss, acc, reg_loss = predict(models, perceptor, batch, noisy_channel, difficulty)
+  # TODO: a way to prevent calulcating gradients through the loss score
+  # from scratch with each model. It would be nice to get them all at once
+  # and map them to each model-optimizer pair
   for module, optim in models.values():
     grads = tape.gradient(batch_loss, module.trainable_variables)
     optim.apply_gradients(zip(grads, module.trainable_variables))
@@ -289,7 +292,7 @@ if __name__ == "__main__":
     # SAVE VISUAL SAMPLE
     if CFG['VISION'] and e_i % 2 == 0:
       fig, axes = plt.subplots(2, 2)
-      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, CFG['num_samples'], tf.int32)
+      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, test_adj.shape[0], tf.int32)
       vis_batch = {
         'adj': tf.gather(test_adj, sample_idxs),
         'node_features': {name: tf.gather(tensor, sample_idxs) for
@@ -303,6 +306,10 @@ if __name__ == "__main__":
       sample_imgs = models['generator'][0](Zs)
       # scale tanh to visual range
       sample_imgs = (sample_imgs + 1) / 2
+      print(f"0: {tf.math.reduce_mean(sample_imgs[0])}")
+      print(f"1: {tf.math.reduce_mean(sample_imgs[1])}")
+      print(f"2: {tf.math.reduce_mean(sample_imgs[2])}")
+      print(f"3: {tf.math.reduce_mean(sample_imgs[3])}")
       axes[0][0].imshow(sample_imgs[0])
       axes[0][1].imshow(sample_imgs[1])
       axes[1][0].imshow(sample_imgs[2])
