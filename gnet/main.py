@@ -14,6 +14,7 @@ from vision import Generator, Decoder, Perceptor, vector_distance_loss, perceptu
 from graph_match import minimum_loss_permutation
 from cfg import CFG
 from aug import get_noisy_channel
+from graph_data import get_dataset
 from ml_utils import dense_regularization, update_data_dict, normalize_data_dict, \
   load_ckpts, save_ckpts
 
@@ -42,42 +43,10 @@ from scratch.
 """
 
 
-def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
-                max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):
-  instances = []
-  print(f"Generating {'test' if test else 'training'} dataset")
-  num_samples = num_samples // 5 if test else num_samples
-  pbar = tqdm(total=num_samples)
-  while len(instances) < num_samples:
-    # make tree
-    adj_list, values_list, value_tokens_list, order_list = \
-      TensorGraph.random_tree(language_spec, min_num_values, max_num_values)
-    # convert to instance
-    instance = TensorGraph.tree_to_instance(adj_list, values_list, value_tokens_list,
-      order_list, max_nodes, language_spec)
-    if instance is not None:
-      instances.append(instance)
-      pbar.update(1)
-      if vis_first and len(instances) == 1:
-        instance.visualize()
-  pbar.close()
-  adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(instances)
-
-  # postprocessing for data labels
-  nf_labels = {}
-  for name in node_features.keys():
-    empty_rows = (tf.math.reduce_max(node_features[name], axis=-1) == 0)[:, :, tf.newaxis]
-    empty_rows = tf.cast(empty_rows, tf.float32)
-    nf_labels[name] = tf.concat([node_features[name], empty_rows], axis=-1)
-
-  adj_labels = adj + tf.eye(adj.shape[1], adj.shape[1],
-                            batch_shape=[adj.shape[0]], dtype=tf.int32)
-
-  return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
-
-
 def update_difficulty(difficulty, epoch_acc):
-  if epoch_acc['values'] > 0.925 and difficulty < 15:
+  # TODO: consider raising the accuracy requirement as
+  # difficulty approaches maximum
+  if epoch_acc['values'] >= 0.999 and difficulty < 15:
     difficulty += 1
   if epoch_acc['values'] < 0.1 and difficulty > 0:
     difficulty -= 1

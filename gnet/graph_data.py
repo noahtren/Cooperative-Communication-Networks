@@ -10,6 +10,7 @@ from typing import Dict
 import tensorflow as tf
 import numpy as np
 from graphviz import Digraph
+from tqdm import tqdm
 
 
 class NodeType:
@@ -147,7 +148,7 @@ class TensorGraph:
 
   @classmethod
   def random_tree(cls, language_spec:str, min_num_values:int,
-                  max_num_values:int):
+                  max_num_values:int, **kwargs):
     """Generate a random, valid tree based on a language spec. Trees are
     generated as NumPy arrays and can be converted to TensorFlow tensors later.
     """
@@ -232,6 +233,38 @@ class TensorGraph:
 
 
   @classmethod
+  def parse_tree(cls, language_spec, adj_list, value_tokens_list, order_list, max_nodes):
+    """Given an adjacency matrix, token names, and a list of token orders,
+    validate that it is a tree and then produce an instance of the tree as
+    a TensorGraph.
+    """
+    SPEC = LanguageSpecs[language_spec]
+    NON_VALUE_NODE_TYPES = [nt for nt in SPEC['node_types'] if not nt.is_value]
+    NON_VALUE_NODE_TOKENS = [nt.token for nt in NON_VALUE_NODE_TYPES]
+
+    values = []
+    for token in value_tokens_list:
+      if token in NON_VALUE_NODE_TOKENS:
+        token_i = NON_VALUE_NODE_TOKENS.index(token) + len(NON_VALUE_NODE_TOKENS)
+      elif token in SPEC['value_tokens']:
+        token_i = SPEC['value_tokens'].index(token)
+      else:
+        raise RuntimeError(f"token {token} doesn't exist in spec '{language_spec}'")
+      value = np.zeros((len(NON_VALUE_NODE_TOKENS) + len(SPEC['value_tokens'])),
+        dtype=np.int32)
+      value[token_i] = 1
+      values.append(value)
+    
+    orders = []
+    for order_idx in order_list:
+      order = np.zeros((1 + SPEC['max_children']), dtype=np.int32)
+      order[order_idx + 1] = 1
+      orders.append(order)
+    
+    return adj_list, values, value_tokens_list, orders
+
+
+  @classmethod
   def instances_to_tensors(cls, tensor_graphs:list):
     """Given a list of instances of this class, turn it into a training dataset
     stored in memory.
@@ -260,6 +293,45 @@ class TensorGraph:
       node_features.items()}
     num_nodes = tf.concat(num_nodes, axis=0)
     return adj, node_features, node_feature_specs, num_nodes
+
+
+def label_data(node_features, adj):
+  # postprocessing for data labels
+  nf_labels = {}
+  for name in node_features.keys():
+    empty_rows = (tf.math.reduce_max(node_features[name], axis=-1) == 0)[:, :, tf.newaxis]
+    empty_rows = tf.cast(empty_rows, tf.float32)
+    nf_labels[name] = tf.concat([node_features[name], empty_rows], axis=-1)
+
+  adj_labels = adj + tf.eye(adj.shape[1], adj.shape[1],
+                            batch_shape=[adj.shape[0]], dtype=tf.int32)
+  # NOTE: consider only labeling nodes via tf.eye if they exist
+  return nf_labels, adj_labels
+
+
+def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
+                max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):
+  instances = []
+  print(f"Generating {'test' if test else 'training'} dataset")
+  num_samples = num_samples // 5 if test else num_samples
+  pbar = tqdm(total=num_samples)
+  while len(instances) < num_samples:
+    # make tree
+    adj_list, values_list, value_tokens_list, order_list = \
+      TensorGraph.random_tree(language_spec, min_num_values, max_num_values)
+    # convert to instance
+    instance = TensorGraph.tree_to_instance(adj_list, values_list, value_tokens_list,
+      order_list, max_nodes, language_spec)
+    if instance is not None:
+      instances.append(instance)
+      pbar.update(1)
+      if vis_first and len(instances) == 1:
+        instance.visualize()
+  pbar.close()
+  adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(instances)
+  nf_labels, adj_labels = label_data(node_features, adj)
+
+  return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
 
 
 if __name__ == "__main__":
