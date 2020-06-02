@@ -8,8 +8,8 @@ import boto3
 
 from cfg import CFG
 
-BUCKET_NAME = CFG['aws_bucket']
-BACKUP_ROOT = os.path.dirname(os.path.abspath(__file__))
+BUCKET_NAME = CFG['s3_bucket']
+code_path = os.path.dirname(os.path.abspath(__file__))
 db = boto3.resource('s3').Bucket(BUCKET_NAME)
 s3_client = boto3.client('s3')
 
@@ -27,9 +27,9 @@ def upload_file(local_path, s3_path):
 
 
 if __name__ == "__main__":
-  for file in os.listdir(BACKUP_ROOT):
-    if file.endswith('.py'):
-      with open(os.path.join(BACKUP_ROOT, file), 'r') as f:
+  for file in os.listdir(code_path):
+    if file.endswith('.py') or file.endswith('.json'):
+      with open(os.path.join(code_path, file), 'r') as f:
         py_code = f.read()
       print(f"Uploading {file}")
-      upload_data(file, py_code)
+      upload_data(f"code/{file}", py_code)
