@@ -27,19 +27,19 @@ class NodeFeatureEmbed(tf.keras.Model):
     feature_reps = []
     for name, layer in self.nf_w.items():
       nf_rep = layer(nf[name])
-      nf_rep = tfa.activations.gelu(nf_rep)
+      nf_rep = tf.nn.swish(nf_rep)
       feature_reps.append(nf_rep)
     
     feature_reps = tf.concat(feature_reps, axis=-1)
     x = self.w(feature_reps)
     x = self.layer_norm_1(x)
     pre_linear_x = x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
 
     x = self.w_out(x)
     x = self.layer_norm_2(x)
     x = pre_linear_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     return x
 
 
@@ -59,7 +59,7 @@ class GlobalLocalAttention(tf.keras.Model):
 
 
     This layer incorporates a multi-head self-attention module as well as
-    a feed-forward layer with the gelu activation function.
+    a feed-forward layer with the swish activation function.
 
     Args:
       num_heads
@@ -151,19 +151,19 @@ class GlobalLocalAttention(tf.keras.Model):
     x = self.w_out_1(context)
     x = self.layer_norm_1(x)
     x = start_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     res_x = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
     x = res_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     res_x = x
 
     x = self.w_out_3(x)
     x = self.layer_norm_3(x)
     x = res_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     return x
 
 
@@ -235,20 +235,20 @@ class GlobalAttention(tf.keras.Model):
     x = self.w_out_1(context)
     x = self.layer_norm_1(x)
     x = start_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     res_x = x
     res_x_2 = x
 
     x = self.w_out_2(x)
     x = self.layer_norm_2(x)
     x = res_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     res_x = x
 
     x = self.w_out_3(x)
     x = self.layer_norm_3(x)
     x = res_x_2 + res_x + x
-    x = tfa.activations.gelu(x)
+    x = tf.nn.swish(x)
     return x
 
 
@@ -305,7 +305,7 @@ class GraphDecoder(tf.keras.Model):
 
     # expand fixed-dimensional representation
     expanded_x = self.expand_w(Z)
-    expanded_x = tfa.activations.gelu(expanded_x)
+    expanded_x = tf.nn.swish(expanded_x)
     x = tf.reshape(expanded_x, [batch_size, self.max_nodes, -1])
 
     # Positional embedding, simply as a hint so that nodes know the index of
