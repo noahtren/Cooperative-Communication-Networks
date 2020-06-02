@@ -1,4 +1,6 @@
-VISION = True
+# optionally read config from disk, maybe to restore a particular checkpoint
+
+VISION = False
 JUST_VISION = False
 CFG = {
   # dataset
@@ -11,7 +13,7 @@ CFG = {
   'num_samples': 2_500 if JUST_VISION else 15_000,
 
   # graph models
-  'hidden_size': 512,
+  'graph_hidden_size': 512, # also used in discriminator module
   'encoder_attention_layers': 4,
   'decoder_attention_layers': 4,
   'num_heads': 6,
@@ -28,6 +30,8 @@ CFG = {
   'x_dim': 128,
   'R': 7,
   'vision_hidden_size': 512,
+  'minimum_filters': 0, # set to 0 for no minimum
+  'Z_embed_num': 5,
   'cppn_loc_embed_dim': 32,
   'gen_Z_embed_dim': 512,
   'c_out': 1,
@@ -40,17 +44,19 @@ CFG = {
   'use_custom_disc': True,
 
   # training
-  'batch_size': 48,
+  'batch_size': 24,
   'epochs': 3_000,
   'mse_loss_only': False,
   'label_smoothing': 0.0,
 
   # checkpointing and saving (set to NOLOG to prevent logging)
-  'run_name': 'full_may29_6',
-  # 'load_vision_name': 'full_may27_4',
-  'load_graph_name': 'full_may29_6',
+  'run_name': 'new_run_graph',
   # 'load_graph_name': None,
-  'load_vision_name': None
+  'load_graph_name': None,
+  # 'load_vision_name': 'full_may27_4',
+  'load_vision_name': None,
+  'aws_filepath': '/gnet',
+  'aws_bucket': 'gestalt-graph',
 }
 RESULTS = {}
 

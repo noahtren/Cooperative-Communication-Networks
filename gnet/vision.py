@@ -90,7 +90,7 @@ class CPPN(tf.keras.Model):
 
 class ConvGenerator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
-               gen_Z_embed_dim:int, c_out:int,
+               gen_Z_embed_dim:int, c_out:int, Z_embed_num:int, minimum_filters:int,
                **kwargs):
     super(ConvGenerator, self).__init__()
     self.init_Z_embed = tf.keras.layers.Dense(gen_Z_embed_dim, **dense_regularization)
@@ -103,8 +103,12 @@ class ConvGenerator(tf.keras.Model):
     self.one_conv_norms = []
     self.conv_norms = []
     self.Z_embeds = []
+    self.Z_norms = []
+    self.loc_convs = []
+    self.loc_norms = []
     for r in range(R):
       filters = vision_hidden_size // (2 ** (R-r))
+      filters = max([filters, minimum_filters])
       upconv = tf.keras.layers.Conv2DTranspose(
         filters,
         kernel_size=3,
@@ -117,11 +121,7 @@ class ConvGenerator(tf.keras.Model):
         kernel_size=1,
         strides=1,
         padding='same',
-        # no regularization here because it takes
-        # raw scaled pixel locations, as well as Z
-        # embeddings, and we may want this layer to
-        # learn things that may be inhibited by
-        # regularization
+        **cnn_regularization
       )
       conv = tf.keras.layers.Conv2D(
         filters,
@@ -130,18 +130,27 @@ class ConvGenerator(tf.keras.Model):
         padding='same',
         **cnn_regularization
       )
-      # TODO: note that this happened
-      # TODO: consider embedding pixel locations as well
-      Z_filters = max([8, filters // 4])
-      Z_embeds = [tf.keras.layers.Dense(256, **dense_regularization) for _ in range(4)] + \
+      Z_filters = filters // 4
+      loc_conv = tf.keras.layers.Conv2D(
+        Z_filters,
+        kernel_size=1,
+        strides=1,
+        padding='same',
+        # no regularization because this takes raw pixel locations as inputs
+      )
+      Z_embeds = [tf.keras.layers.Dense(256, **dense_regularization) for _ in range(Z_embed_num - 1)] + \
         [tf.keras.layers.Dense(Z_filters, **dense_regularization)]
+      Z_norms = [tf.keras.layers.LayerNormalization() for _ in range(Z_embed_num)]
       self.upconvs = [upconv] + self.upconvs
       self.one_convs = [one_conv] + self.one_convs
       self.convs = [conv] + self.convs
       self.Z_embeds = [Z_embeds] + self.Z_embeds
+      self.Z_norms = [Z_norms] + self.Z_norms
+      self.loc_convs = [loc_conv] + self.loc_convs
       self.upconv_norms.append(tf.keras.layers.LayerNormalization())
       self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
       self.conv_norms.append(tf.keras.layers.LayerNormalization())
+      self.loc_norms.append(tf.keras.layers.LayerNormalization())
     self.out_conv = tf.keras.layers.Conv2D(
       c_out,
       kernel_size=1,
@@ -157,10 +166,21 @@ class ConvGenerator(tf.keras.Model):
     else:
       x = Z
     x = x[:, tf.newaxis, tf.newaxis]
+    if debug: tf.print('GENERATOR')
     if debug: tf.print(x.shape)
-    for Z_embeds, upconv, one_conv, conv, upconv_norm, one_conv_norm, conv_norm in \
-      zip(self.Z_embeds, self.upconvs, self.one_convs, self.convs, self.upconv_norms, self.one_conv_norms, self.conv_norms):
+    for li, _ in enumerate(self.convs):
       if debug: tf.print(x.shape)
+      upconv = self.upconvs[li]
+      upconv_norm = self.upconv_norms[li]
+      Z_embeds = self.Z_embeds[li]
+      Z_norms = self.Z_norms[li]
+      loc_conv = self.loc_convs[li]
+      loc_norm = self.loc_norms[li]
+      one_conv = self.one_convs[li]
+      one_conv_norm = self.one_conv_norms[li]
+      conv = self.convs[li]
+      conv_norm = self.conv_norms[li]
+
       x = upconv(x)
       x = upconv_norm(x)
       x = tf.nn.dropout(x, 0.1)
@@ -169,9 +189,10 @@ class ConvGenerator(tf.keras.Model):
       start_x = x
       y_dim, x_dim = x.shape[1], x.shape[2]
       loc = generate_scaled_coordinate_hints(batch_size, y_dim, x_dim)
+      loc = loc_conv(loc)
+      loc = loc_norm(loc)
       _z = Z
-      # TODO: consider adding normalization to z embedding stack
-      for Z_embed in Z_embeds:
+      for Z_embed, Z_norm in zip(Z_embeds, Z_norms):
         _z = Z_embed(_z)
         _z = tf.nn.swish(_z)
         if debug: tf.print(f"Z shape: {_z.shape}")
@@ -180,7 +201,7 @@ class ConvGenerator(tf.keras.Model):
 
       if debug: tf.print(f"loc: {loc.shape}, z: {_z.shape}")
       x = tf.concat([x, loc, _z], axis=-1)
-      if debug: tf.print(x.shape)
+      if debug: tf.print(f"joined shape: {x.shape}")
 
       x = one_conv(x)
       x = one_conv_norm(x)
@@ -202,7 +223,8 @@ class ConvGenerator(tf.keras.Model):
 
 class ConvDiscriminator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
-               gen_Z_embed_dim:int, c_out:int, hidden_size:int, NUM_SYMBOLS:int,
+               gen_Z_embed_dim:int, c_out:int, NUM_SYMBOLS:int,
+               minimum_filters:int, graph_hidden_size:int,
                **kwargs):
     super(ConvDiscriminator, self).__init__()
     self.downconvs = []
@@ -213,6 +235,7 @@ class ConvDiscriminator(tf.keras.Model):
     self.conv_norms = []
     for r in range(R):
       filters = vision_hidden_size // (2 ** (R-r-1))
+      filters = max([filters, minimum_filters])
       downconv = tf.keras.layers.Conv2D(
         filters,
         kernel_size=3,
@@ -241,18 +264,24 @@ class ConvDiscriminator(tf.keras.Model):
       self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
       self.conv_norms.append(tf.keras.layers.LayerNormalization())
     self.out_conv = tf.keras.layers.Conv2D(
-      hidden_size,
+      vision_hidden_size,
       kernel_size=1,
       strides=1,
       padding='same',
       **dense_regularization
     )
-    self.pred = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)
+    self.pred = tf.keras.layers.Dense(graph_hidden_size, **dense_regularization)
     self.gap = tf.keras.layers.GlobalAveragePooling2D()
 
   def call(self, x, debug=False):
-    for downconv, one_conv, conv, downconv_norm, one_conv_norm, conv_norm in \
-      zip(self.downconvs, self.one_convs, self.convs, self.downconv_norms, self.one_conv_norms, self.conv_norms):
+    if debug: tf.print('DECODER')
+    for li, _ in enumerate(self.convs):
+      downconv = self.downconvs[li]
+      downconv_norm = self.downconv_norms[li]
+      one_conv = self.one_convs[li]
+      one_conv_norm = self.one_conv_norms[li]
+      conv = self.convs[li]
+      conv_norm = self.conv_norms[li]
       if debug: tf.print(x.shape)
       x = downconv(x)
       x = downconv_norm(x)
@@ -282,9 +311,11 @@ class ConvDiscriminator(tf.keras.Model):
 
 def Generator():
   if CFG['vision_model'] == 'conv':
-    return ConvGenerator(**CFG)
+    Generator = ConvGenerator(**CFG)
   elif CFG['vision_model'] == 'cppn':
-    return CPPN(**CFG)
+    Generator = CPPN(**CFG)
+  Generator._name = 'generator'
+  return Generator
 
 
 def get_pretrained_info():
@@ -309,7 +340,6 @@ def get_pretrained_info():
 def Decoder():
   if CFG['use_custom_disc']:
     ImageDecoder = ConvDiscriminator(**CFG)
-    return ImageDecoder
   else:
     ModelFunc, _ = get_pretrained_info()
     ImageDecoder = ModelFunc(
@@ -317,7 +347,8 @@ def Decoder():
       weights="imagenet",
       input_shape=((CFG['y_dim'], CFG['x_dim'], 3)),
     )
-    return ImageDecoder
+  ImageDecoder._name = 'decoder'
+  return ImageDecoder
 
 
 def Perceptor():
@@ -411,7 +442,15 @@ def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
   return percept_loss
 
 
+def make_symbol_data(num_samples):
+  x = tf.random.uniform((num_samples,), 0, CFG['NUM_SYMBOLS'], dtype=tf.int32)
+  x = tf.one_hot(x, depth=CFG['NUM_SYMBOLS'])
+  samples = tf.range(CFG['NUM_SYMBOLS'])
+  samples = tf.one_hot(samples, depth=CFG['NUM_SYMBOLS'])
+  return x, samples
+
+
 if __name__ == "__main__":
   # ex = tf.random.normal([8, 64, 64, 3])
   # perceptual_loss(ex)
-  pass
+  generator = ConvGenerator(**CFG)

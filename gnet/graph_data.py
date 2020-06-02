@@ -310,9 +310,15 @@ def label_data(node_features, adj):
 
 
 def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
-                max_nodes:int, num_samples:int, vis_first=False, test=False, **kwargs):
+                max_nodes:int, num_samples:int, vis_first=False, test=False,
+                dummy=False, **kwargs):
   instances = []
-  print(f"Generating {'test' if test else 'training'} dataset")
+  gen_name = 'train'
+  if test:
+    gen_name = 'test'
+  if dummy:
+    gen_name = 'dummy'
+  print(f"Generating {gen_name} dataset")
   num_samples = num_samples // 5 if test else num_samples
   pbar = tqdm(total=num_samples)
   while len(instances) < num_samples:
@@ -330,8 +336,15 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
   pbar.close()
   adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(instances)
   nf_labels, adj_labels = label_data(node_features, adj)
-
-  return adj, node_features, node_feature_specs, num_nodes, adj_labels, nf_labels
+  ds = {
+    'adj': adj,
+    'node_features': node_features,
+    'node_feature_specs': node_feature_specs,
+    'num_nodes': num_nodes,
+    'adj_labels': adj_labels,
+    'nf_labels': nf_labels
+  }
+  return ds
 
 
 if __name__ == "__main__":
