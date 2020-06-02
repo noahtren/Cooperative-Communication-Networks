@@ -10,6 +10,7 @@ try:
   CFG
 except NameError:
   from cfg import CFG
+from upload import upload_file
 
 
 def shuffle_together(*tensors):
@@ -35,69 +36,6 @@ def normalize_data_dict(data_dict, num_batches):
   return data_dict
 
 
-class WarmUp(tf.keras.optimizers.schedules.LearningRateSchedule):
-  """Applys a warmup schedule on a given learning rate decay schedule."""
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_schedule_fn,
-      warmup_steps,
-      power=1.0,
-      name=None):
-    super(WarmUp, self).__init__()
-    self.initial_learning_rate = initial_learning_rate
-    self.warmup_steps = warmup_steps
-    self.power = power
-    self.decay_schedule_fn = decay_schedule_fn
-    self.name = name
-
-  def __call__(self, step):
-    with tf.name_scope(self.name or 'WarmUp') as name:
-      # Implements polynomial warmup. i.e., if global_step < warmup_steps, the
-      # learning rate will be `global_step/num_warmup_steps * init_lr`.
-      global_step_float = tf.cast(step, tf.float32)
-      warmup_steps_float = tf.cast(self.warmup_steps, tf.float32)
-      warmup_percent_done = global_step_float / warmup_steps_float
-      warmup_learning_rate = (
-          self.initial_learning_rate *
-          tf.math.pow(warmup_percent_done, self.power))
-      return tf.cond(global_step_float < warmup_steps_float,
-                     lambda: warmup_learning_rate,
-                     lambda: self.decay_schedule_fn(step),
-                     name=name)
-
-  def get_config(self):
-    return {
-        'initial_learning_rate': self.initial_learning_rate,
-        'decay_schedule_fn': self.decay_schedule_fn,
-        'warmup_steps': self.warmup_steps,
-        'power': self.power,
-        'name': self.name
-    }
-
-
-def create_optimizer(init_lr, num_train_steps, num_warmup_steps):
-  """Creates an optimizer with learning rate schedule."""
-  # Implements linear decay of the learning rate.
-  learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
-      initial_learning_rate=init_lr,
-      decay_steps=num_train_steps,
-      end_learning_rate=0.0)
-  if num_warmup_steps:
-    learning_rate_fn = WarmUp(initial_learning_rate=init_lr,
-                              decay_schedule_fn=learning_rate_fn,
-                              warmup_steps=num_warmup_steps)
-  optimizer = AdamWeightDecay(
-      learning_rate=learning_rate_fn,
-      weight_decay_rate=0.01,
-      beta_1=0.9,
-      beta_2=0.999,
-      epsilon=1e-6,
-      exclude_from_weight_decay=['layer_norm', 'bias'])
-  return optimizer
-
-
 # ============================== REGULARIZATION ==============================
 dense_regularization = {
   'kernel_regularizer': tf.keras.regularizers.l2(1e-4),
@@ -111,25 +49,3 @@ cnn_regularization = {
   'kernel_regularizer': tf.keras.regularizers.l2(1e-4),
   'bias_regularizer': tf.keras.regularizers.l2(1e-4),
 }
-
-
-# ============================== LOAD/SAVE ==============================
-def load_ckpts(models, load_name, ckpt_name='best'):
-  log_dir = f"logs/{load_name}"
-  for model_name, (model, _) in models.items():
-    model_path = os.path.join(log_dir, model_name, ckpt_name)
-    if os.path.exists(model_path):
-      model.load_weights(model_path)
-      print(f"Loaded weights for {model_name}")
-  # TODO: fix this
-  # if CFG['VISION'] and 'decoder' in models:
-  #   models['decoder'][0].expand_w = \
-  #     tf.keras.layers.Dense(CFG['max_nodes'] * CFG['hidden_size'], **dense_regularization)
-  #   print("Overrode decoder input layer (for vision compatibility)")
-
-
-def save_ckpts(models, log_dir, ckpt_name:str):
-  for model_name, model in models.items():
-    model_path = os.path.join(log_dir, model_name, ckpt_name)
-    os.makedirs(model_path, exist_ok=True)
-    model[0].save_weights(model_path)
