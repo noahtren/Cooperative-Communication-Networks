@@ -120,30 +120,26 @@ def get_model():
     return GraphModel(g_encoder, g_decoder)    
 
 
-def load_weights(model):
-  model_path = f"checkpoints/{CFG['run_name']}"
+def load_weights(model, path_prefix):
+  model_path = f"{path_prefix}checkpoints/{CFG['load_name']}"
   if os.path.exists(model_path):
     print(f"Checkpoint exists at {model_path}, loaded these weights!")
-    model.load_weights(model_path)
+    model.load_weights(os.path.join(model_path, 'best'))
   else:
     print(f"No checkpoint found. Weights are initialized randomly.")
 
 
-def save_weights(model):
-  model_path = f"checkpoints/{CFG['run_name']}"
+def save_weights(model, path_prefix):
+  model_path = f"{path_prefix}checkpoints/{CFG['run_name']}/best"
   model.save_weights(model_path)
 
 
 def get_optim():
-  # TODO: consider exponential decay code here
-  # if CFG['use_exponential_rate_scheduler']:
-  #   lr = tf.keras.optimizers.schedules.ExponentialDecay(
-  #     CFG['initial_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
   lr_multiplier = {
-    'root_model/g_encoder': 0.0001,
-    'root_model/g_decoder': 0.0001,
-    'root_model/generator': 0.0001,
-    'root_model/decoder':   0.0001,
+    'root_model/g_encoder': CFG['g_encoder_lr'],
+    'root_model/g_decoder': CFG['g_decoder_lr'],
+    'root_model/generator': CFG['generator_lr'],
+    'root_model/decoder':   CFG['decoder_lr'],
   }
   optim = AdamLRM(lr=1., lr_multiplier=lr_multiplier)
   return optim
