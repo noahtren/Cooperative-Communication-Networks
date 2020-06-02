@@ -1,0 +1,53 @@
+{
+  "JUST_VISION": false,
+  "VISION": true,
+  "USE_S3": false,
+  "TPU": false,
+  "run_name": "full_color_june2",
+  "load_name": "graph_pretrain_june2",
+
+  "max_nodes": 5,
+  "language_spec": "arithmetic",
+  "min_num_values": 1,
+  "max_num_values": 3,
+  "num_samples": 30000,
+  "graph_hidden_size": 384,
+  "encoder_attention_layers": 3,
+  "decoder_attention_layers": 3,
+  "num_heads": 4,
+
+  "g_encoder_lr": 1e-5,
+  "g_decoder_lr": 1e-5,
+  "generator_lr": 1e-4,
+  "decoder_lr": 1e-4,
+
+  "vision_model": "conv",
+  "vision_models": ["conv", "cppn"],
+  "DISC_MODEL" : "ResNet50V2",
+  "y_dim": 128,
+  "x_dim": 128,
+  "R": 7,
+  "vision_hidden_size": 384,
+  "minimum_filters": 16,
+  "Z_embed_num": 3,
+  "cppn_loc_embed_dim": 32,
+  "c_out": 3,
+  "NUM_SYMBOLS": 256,
+
+  "use_perceptual_loss": false,
+  "use_distance_loss": false,
+  "mse_loss_only": false,
+
+  "pretrained_disc_name": "ResNet50V2",
+  "use_custom_disc": true,
+
+  "batch_size": 32,
+  "epochs": 3000,
+  "label_smoothing": 0.0,
+
+  "default_save_checkpoint_every": 1,
+  "s3_save_checkpoint_every": 10,
+  "default_root_filepath": "",
+  "s3_root_filepath": "/s3/gestalt-graph/",
+  "s3_bucket": "gestalt-graph"
+}
