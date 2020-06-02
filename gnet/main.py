@@ -3,31 +3,44 @@ import datetime
 import json
 import os
 import io
+import contextlib
 
 import tensorflow as tf
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from graph_match import minimum_loss_permutation
-from vision import Perceptor
+from vision import Perceptor, perceptual_loss
 from cfg import CFG
 from graph_data import get_dataset
 from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
-from upload import upload_data
 from models import get_model, get_optim, run_dummy_batch, load_weights, save_weights
+
+strategy = None
+
+if CFG['TPU']:
+  assert os.environ['COLAB_TPU_ADDR'], "No TPU available in the environment!"
+  TPU_WORKER = 'grpc://' + os.environ['COLAB_TPU_ADDR']
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=TPU_WORKER)
+  tf.config.experimental_connect_to_cluster(resolver)
+  tf.tpu.experimental.initialize_tpu_system(resolver)
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+else:
+  strategy = tf.distribute.get_strategy()
+
+print("REPLICAS: ", strategy.num_replicas_in_sync)
 
 
 # Hyperparameters to explore:
 
 # Regularization for each dense layer in the graph autoencoder
 
-# Relative learning rates between different components. The full pipeline
-# has 4 distinct components, each with its own potential learning rate!
+# Relative learning rates between different components
 
 # Parameter size difference between components
 
 # Whether each module is pretrained on the smaller subtask, or starting
-# from scratch.
+# from scratch
 
 
 def update_difficulty(difficulty, epoch_acc):
@@ -41,9 +54,14 @@ def update_difficulty(difficulty, epoch_acc):
 
 
 def predict(model, batch, difficulty, perceptor):
+  reg_loss = {}
   if CFG['VISION']:
     adj_pred, nf_pred, imgs, aug_imgs = model(batch, difficulty)
-    # TODO: implement perceptual loss here, with images returned from model
+    if CFG['use_perceptual_loss']:
+      features = perceptor(imgs)
+      percept_loss = perceptual_loss(features)
+      reg_loss['perceptual'] = percept_loss
+      # TODO: implement vector distance loss
   else:
     adj_pred, nf_pred = model(batch, difficulty)
   batch_loss, acc = minimum_loss_permutation(
@@ -52,11 +70,12 @@ def predict(model, batch, difficulty, perceptor):
     adj_pred,
     nf_pred
   )
-  reg_loss = {}
   for sub_model in model.layers:
     name = sub_model.name
     reg_loss[name] = tf.math.reduce_sum(sub_model.losses)
-    batch_loss += reg_loss[name]
+  # add regularization losses to batch loss
+  for reg_name in reg_loss.keys():
+    batch_loss += reg_loss[reg_name]
   return batch_loss, acc, reg_loss
 
 
@@ -89,14 +108,16 @@ def get_batch(start_b, end_b, adj, node_features, adj_labels, nf_labels,
   return batch
 
 
-if __name__ == "__main__":
+def main():
+  print(f"Entering strategy: {strategy}")
   # ==================== DATA AND MODELS ====================
   train_ds = get_dataset(**CFG, test=False)
   test_ds = get_dataset(**CFG, test=True)
 
+  path_prefix = CFG['root_filepath'] # using s3fs
   model = get_model()
   run_dummy_batch(model)
-  load_weights(model)
+  load_weights(model, path_prefix)
   optim = get_optim()
   # perceptor = Perceptor()
   perceptor = None
@@ -105,9 +126,10 @@ if __name__ == "__main__":
   difficulty = tf.convert_to_tensor(0)
 
   # ==================== LOGGING ====================
-  log_dir = f"logs/{CFG['run_name']}"
-  train_log_dir = f"{log_dir}/train"
-  test_log_dir = f"{log_dir}/test"
+  log_dir = f"{path_prefix}logs/{CFG['run_name']}"
+  os.makedirs(log_dir, exist_ok=True)
+  train_log_dir = f"{log_dir}train"
+  test_log_dir = f"{log_dir}test"
   train_summary_writer = tf.summary.create_file_writer(train_log_dir)
   test_summary_writer = tf.summary.create_file_writer(test_log_dir)
   current_time = str(datetime.datetime.now())
@@ -133,6 +155,9 @@ if __name__ == "__main__":
       end_b = min([(b_i + 1) * CFG['batch_size'], tr_num_samples])
       start_b = end_b - CFG['batch_size']
       train_batch = get_batch(start_b, end_b, **train_ds)
+      # batch_loss, batch_acc, batch_reg_loss = strategy.run(
+      #   train_step, args=(model, optim, train_batch, difficulty, perceptor)
+      # )
       batch_loss, batch_acc, batch_reg_loss = train_step(model, optim, train_batch, difficulty, perceptor)
       tr_epoch_loss += batch_loss
       update_data_dict(tr_epoch_acc, batch_acc)
@@ -143,6 +168,9 @@ if __name__ == "__main__":
       end_b = min([(b_i + 1) * CFG['batch_size'], test_num_samples])
       start_b = end_b - CFG['batch_size']
       test_batch = get_batch(start_b, end_b, **test_ds)
+      # batch_loss, batch_acc, _ = strategy.run(
+      #   test_step, args=(model, test_batch, difficulty, perceptor)
+      # )
       batch_loss, batch_acc, _ = test_step(model, test_batch, difficulty, perceptor)
       test_epoch_loss += batch_loss
       update_data_dict(test_epoch_acc, batch_acc)
@@ -170,9 +198,10 @@ if __name__ == "__main__":
         for name, metric in test_epoch_acc.items():
           tf.summary.scalar(name, metric, step=e_i)
     # SAVE CHECKPOINTS
-    if test_epoch_loss < best_epoch_loss:
-      best_epoch_loss = test_epoch_loss
-      save_weights(model)
+    if e_i % CFG['save_checkpoint_every'] == 0:
+      if test_epoch_loss < best_epoch_loss:
+        best_epoch_loss = test_epoch_loss
+        save_weights(model, path_prefix)
     # GENERATE VISUAL SAMPLE
     if CFG['VISION'] and e_i % 2 == 0:
       fig, axes = plt.subplots(4, 2)
@@ -197,12 +226,13 @@ if __name__ == "__main__":
       for img_i in range(4):
         axes[img_i][0].imshow(sample_imgs[img_i])
         axes[img_i][1].imshow(aug_imgs[img_i])
-        
-      img_data = io.BytesIO()
-      img_name = f"gallery/{CFG['run_name']}/{e_i}.png"
-      plt.savefig(img_data, format='png')
-      img_data.seek(0)
-      upload_data(img_name, img_data)
+      gallery_dir = f"{path_prefix}gallery/{CFG['run_name']}"
+      img_name = os.path.join(gallery_dir, f"{e_i}.png")
+      os.makedirs(gallery_dir, exist_ok=True)
+      plt.savefig(img_name, format='png')
       plt.clf()
       plt.cla()
       plt.close()
+
+if __name__ == "__main__":
+  main()
