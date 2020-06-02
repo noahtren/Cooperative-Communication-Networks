@@ -291,11 +291,11 @@ class TensorGraph:
     adj = tf.stack(adj, axis=0)
     node_features = {name: tf.cast(tf.stack(nf_list, axis=0), tf.float32) for name, nf_list in
       node_features.items()}
-    num_nodes = tf.concat(num_nodes, axis=0)
+    num_nodes = tf.stack(num_nodes, axis=0)
     return adj, node_features, node_feature_specs, num_nodes
 
 
-def label_data(node_features, adj):
+def label_data(node_features, adj, num_nodes):
   # postprocessing for data labels
   nf_labels = {}
   for name in node_features.keys():
@@ -303,9 +303,19 @@ def label_data(node_features, adj):
     empty_rows = tf.cast(empty_rows, tf.float32)
     nf_labels[name] = tf.concat([node_features[name], empty_rows], axis=-1)
 
-  adj_labels = adj + tf.eye(adj.shape[1], adj.shape[1],
-                            batch_shape=[adj.shape[0]], dtype=tf.int32)
-  # NOTE: consider only labeling nodes via tf.eye if they exist
+  identity = tf.eye(adj.shape[1], adj.shape[1],
+    batch_shape=[adj.shape[0]], dtype=tf.int32)
+  # only apply identity matrix to nodes that exist
+  grid_max_idxs = tf.tile(tf.expand_dims(tf.math.reduce_max(
+      tf.cast(tf.reshape(tf.where(
+        tf.ones((adj.shape[1], adj.shape[1]))
+      ), (adj.shape[1], adj.shape[1], 2)), tf.int32), axis=-1), 0),
+      [num_nodes.shape[0], 1, 1])
+  identity = tf.where(grid_max_idxs < num_nodes[:, tf.newaxis, tf.newaxis],
+    identity, tf.zeros_like(identity))
+  # NOTE: I ran 2 experiments to prove that this provides a significant
+  # performance boost
+  adj_labels = adj + identity
   return nf_labels, adj_labels
 
 
@@ -335,7 +345,7 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
         instance.visualize()
   pbar.close()
   adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(instances)
-  nf_labels, adj_labels = label_data(node_features, adj)
+  nf_labels, adj_labels = label_data(node_features, adj, num_nodes)
   ds = {
     'adj': adj,
     'node_features': node_features,
