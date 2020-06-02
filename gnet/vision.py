@@ -90,10 +90,10 @@ class CPPN(tf.keras.Model):
 
 class ConvGenerator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
-               gen_Z_embed_dim:int, c_out:int, Z_embed_num:int, minimum_filters:int,
+               c_out:int, Z_embed_num:int, minimum_filters:int,
                **kwargs):
     super(ConvGenerator, self).__init__()
-    self.init_Z_embed = tf.keras.layers.Dense(gen_Z_embed_dim, **dense_regularization)
+    self.init_Z_embed = tf.keras.layers.Dense(vision_hidden_size, **dense_regularization)
     self.y_dim = y_dim
     self.x_dim = x_dim
     self.upconvs = []
@@ -223,8 +223,8 @@ class ConvGenerator(tf.keras.Model):
 
 class ConvDiscriminator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
-               gen_Z_embed_dim:int, c_out:int, NUM_SYMBOLS:int,
-               minimum_filters:int, graph_hidden_size:int,
+               c_out:int, NUM_SYMBOLS:int, minimum_filters:int,
+               graph_hidden_size:int,
                **kwargs):
     super(ConvDiscriminator, self).__init__()
     self.downconvs = []
@@ -319,17 +319,17 @@ def Generator():
 
 
 def get_pretrained_info():
-  if CFG['pretrained_disc'] == 'Xception':
+  if CFG['pretrained_disc_name'] == 'Xception':
     ModelFunc = tf.keras.applications.Xception
     # PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
     PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
-  elif CFG['pretrained_disc'] == 'ResNet50V2':
+  elif CFG['pretrained_disc_name'] == 'ResNet50V2':
     ModelFunc = tf.keras.applications.ResNet50V2
     # PerceptorLayerName = 'conv2_block3_out' # 4x downscale
     PerceptorLayerName = 'conv3_block4_out' # 8x downscale
     # PerceptorLayerName = 'conv4_block6_out' # 16x downscale
     # PerceptorLayerName = 'conv5_block2_out' # 32x downscale
-  elif CFG['pretrained_disc'] == 'VGG16':
+  elif CFG['pretrained_disc_name'] == 'VGG16':
     ModelFunc = tf.keras.applications.VGG16
     # PerceptorLayerName = 'block3_conv3' # 4x downscale
     # PerceptorLayerName = 'block4_conv3' # 8x downscale
