@@ -2,178 +2,106 @@ import code
 import datetime
 import json
 import os
+import io
 
 import tensorflow as tf
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from graph_data import TensorGraph
-from encoder import Encoder 
-from decoder import GraphDecoder
-from vision import Generator, Decoder, Perceptor, vector_distance_loss, perceptual_loss
 from graph_match import minimum_loss_permutation
+from vision import Perceptor
 from cfg import CFG
-from aug import get_noisy_channel
 from graph_data import get_dataset
-from ml_utils import dense_regularization, update_data_dict, normalize_data_dict, \
-  load_ckpts, save_ckpts
+from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
+from upload import upload_data
+from models import get_model, get_optim, run_dummy_batch, load_weights, save_weights
 
 
-# TODO: a way to evaluate, at least statistically, how much the training and
-# testing datasets overlap.
+# Hyperparameters to explore:
 
-# TRICK: when starting with a pretrained, regularized graph autoencoder, set
-# the learning rate of the autoencoder to something far lower than the visual
-# modules. this encourages the visual element to learn from error while the
-# graph autoencoder components change *less*. It may also be worth considering
-# freezing those weights entirely, but it seems like a bit of flexibility is
-# helpful -- strategic transfer learning.
+# Regularization for each dense layer in the graph autoencoder
 
-"""Documentation of hyperparameters
+# Relative learning rates between different components. The full pipeline
+# has 4 distinct components, each with its own potential learning rate!
 
-Regularization for each dense layer in the graph autoencoder
+# Parameter size difference between components
 
-Relative learning rates between different components. The full pipeline
-has 4 distinct components, each with its own potential learning rate!
-
-Parameter size difference between components
-
-Whether each module is pretrained on a smaller subtask, or starting
-from scratch.
-"""
+# Whether each module is pretrained on the smaller subtask, or starting
+# from scratch.
 
 
 def update_difficulty(difficulty, epoch_acc):
   # TODO: consider raising the accuracy requirement as
   # difficulty approaches maximum
-  if epoch_acc['values'] >= 0.999 and difficulty < 15:
+  if epoch_acc['values'] >= 0.99 and difficulty < 15:
     difficulty += 1
   if epoch_acc['values'] < 0.1 and difficulty > 0:
     difficulty -= 1
   return difficulty
 
 
-def predict(models, perceptor, batch, noisy_channel, difficulty):
-  reg_loss = {}
-  batch_loss = 0
-  Z = models['encoder'][0](batch)
+def predict(model, batch, difficulty, perceptor):
   if CFG['VISION']:
-    imgs = models['generator'][0](Z)
-    if CFG['use_perceptual_loss']:
-      percepts = perceptor(imgs)
-      percept_loss = perceptual_loss(percepts)
-      reg_loss['perceptual'] = percept_loss
-      batch_loss += percept_loss
-    if CFG['use_distance_loss']:
-      percepts = perceptor(imgs)
-      dist_loss = vector_distance_loss(symbols, imgs)
-      reg_loss['distance'] = dist_loss
-      batch_loss += dist_loss
-    imgs = noisy_channel(imgs, difficulty)
-    Z = models['discriminator'][0](imgs)
-    # end vision
-  adj_pred, nf_pred = models['decoder'][0](Z)
+    adj_pred, nf_pred, imgs, aug_imgs = model(batch, difficulty)
+    # TODO: implement perceptual loss here, with images returned from model
+  else:
+    adj_pred, nf_pred = model(batch, difficulty)
   batch_loss, acc = minimum_loss_permutation(
     batch['adj_labels'],
     batch['nf_labels'],
     adj_pred,
     nf_pred
   )
-  for name, (model, _) in models.items():
-    reg_loss[name] = tf.math.reduce_sum(model.losses)
+  reg_loss = {}
+  for sub_model in model.layers:
+    name = sub_model.name
+    reg_loss[name] = tf.math.reduce_sum(sub_model.losses)
     batch_loss += reg_loss[name]
   return batch_loss, acc, reg_loss
 
 
 @tf.function
-def train_step(models, perceptor, batch, noisy_channel, difficulty):
+def train_step(model, optim, batch, difficulty, perceptor=None):
   with tf.GradientTape(persistent=True) as tape:
-    batch_loss, acc, reg_loss = predict(models, perceptor, batch, noisy_channel, difficulty)
-  # TODO: a way to prevent calulcating gradients through the loss score
-  # from scratch with each model. It would be nice to get them all at once
-  # and map them to each model-optimizer pair
-  for module, optim in models.values():
-    grads = tape.gradient(batch_loss, module.trainable_variables)
-    optim.apply_gradients(zip(grads, module.trainable_variables))
+    batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
+  grads = tape.gradient(batch_loss, model.trainable_variables)
+  optim.apply_gradients(zip(grads, model.trainable_variables))
   return batch_loss, acc, reg_loss
 
 
 @tf.function
-def test_step(models, perceptor, batch, noisy_channel, difficulty):
-  batch_loss, acc, reg_loss = predict(models, perceptor, batch, noisy_channel, difficulty)
+def test_step(model, batch, difficulty, perceptor=None):
+  batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
   return batch_loss, acc, reg_loss
 
 
-def dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels,
-                tr_nf_labels, tr_num_nodes):
-  """Used to populate weights before loading.
-  """
+def get_batch(start_b, end_b, adj, node_features, adj_labels, nf_labels,
+  num_nodes, **kwargs):
   batch = {
-    'adj': tr_adj[:CFG['batch_size']],
-    'node_features': {name: tensor[:CFG['batch_size']] for
-      name, tensor in tr_node_features.items()},
-    'adj_labels': tr_adj_labels[:CFG['batch_size']],
-    'nf_labels': {name: tensor[:CFG['batch_size']] for
-      name, tensor in tr_nf_labels.items()},
-    'num_nodes': tr_num_nodes[:CFG['batch_size']],
+    'adj': adj[start_b:end_b],
+    'node_features': {name: tensor[start_b:end_b] for
+      name, tensor in node_features.items()},
+    'adj_labels': adj_labels[start_b:end_b],
+    'nf_labels': {name: tensor[start_b:end_b] for
+      name, tensor in nf_labels.items()},
+    'num_nodes': num_nodes[start_b:end_b],
   }
-  x = models['encoder'][0](batch)
-  if CFG['VISION']:
-    Z = models['generator'][0](x)
-    x = models['discriminator'][0](Z)
-  adj_pred, nf_pred = models['decoder'][0](x)
-  print(f"Dummy batch completed.")
-  print("Input shapes::")
-  print(f"adj_labels: {batch['adj_labels'].shape}")
-  for key, tensor in batch['nf_labels'].items():
-    print(f"nf_labels [{key}]: {tensor.shape}")
-  print(f"num_nodes: {batch['num_nodes'].shape}")
-  print("Output shapes::")
-  print(f"adj_pred: {adj_pred.shape}")
-  for key, tensor in nf_pred.items():
-    print(f"nf_pred [{key}]: {tensor.shape}")
+  return batch
 
 
 if __name__ == "__main__":
   # ==================== DATA AND MODELS ====================
-  tr_adj, tr_node_features, tr_node_feature_specs, tr_num_nodes, \
-  tr_adj_labels, tr_nf_labels = get_dataset(**CFG, test=False)
+  train_ds = get_dataset(**CFG, test=False)
+  test_ds = get_dataset(**CFG, test=True)
 
-  test_adj, test_node_features, test_node_feature_specs, test_num_nodes, \
-  test_adj_labels, test_nf_labels = get_dataset(**CFG, test=True)
-
-  CFG['node_feature_specs'] = tr_node_feature_specs
-  encoder = Encoder(**CFG)
-  decoder = GraphDecoder(**CFG)
-  lr = CFG['initial_lr']
-  if CFG['use_exponential_rate_scheduler']:
-    lr = tf.keras.optimizers.schedules.ExponentialDecay(
-      CFG['initial_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
-  models = {
-    'encoder': [encoder, tf.keras.optimizers.Adam(lr)],
-    'decoder': [decoder, tf.keras.optimizers.Adam(lr)],
-  }
+  model = get_model()
+  run_dummy_batch(model)
+  load_weights(model)
+  optim = get_optim()
+  # perceptor = Perceptor()
   perceptor = None
-  if CFG['VISION']:
-    generator = Generator()
-    discriminator = Decoder()
-    perceptor = Perceptor()
-    gen_lr = tf.keras.optimizers.schedules.ExponentialDecay(
-      CFG['generator_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
-    disc_lr = tf.keras.optimizers.schedules.ExponentialDecay(
-      CFG['discriminator_lr'], decay_steps=100_000, decay_rate=0.96, staircase=True)
-    models['generator'] = [generator, tf.keras.optimizers.Adam(gen_lr)]
-    models['discriminator'] = [discriminator, tf.keras.optimizers.Adam(disc_lr)]
-  dummy_batch(models, tr_adj, tr_node_features, tr_adj_labels, tr_nf_labels, tr_num_nodes)
-  if CFG['load_graph_name'] is not None:
-    print('Loading graph')
-    load_ckpts(models, CFG['load_graph_name'])
-  if CFG['load_vision_name'] is not None:
-    print('Loading vision')
-    load_ckpts(models, CFG['load_vision_name'], 'latest')
 
-  # ==================== DIFFICULTY AND AUGMENTATION
-  noisy_channel = get_noisy_channel()
+  # ==================== NOISY CHANNEL ====================
   difficulty = tf.convert_to_tensor(0)
 
   # ==================== LOGGING ====================
@@ -188,8 +116,10 @@ if __name__ == "__main__":
     f.write(json.dumps(CFG, indent=4))
 
   # ==================== TRAIN LOOP ====================
-  tr_num_batches = (tr_adj.shape[0] // CFG['batch_size']) + 1
-  test_num_batches = (test_adj.shape[0] // CFG['batch_size']) + 1
+  tr_num_samples = train_ds['adj'].shape[0]
+  test_num_samples = test_ds['adj'].shape[0]
+  tr_num_batches = (tr_num_samples // CFG['batch_size']) + 1
+  test_num_batches = (test_num_samples // CFG['batch_size']) + 1
   best_epoch_loss = tf.float32.max
   for e_i in range(CFG['epochs']):
     # RESET METRICS
@@ -198,41 +128,25 @@ if __name__ == "__main__":
     tr_epoch_acc = {}
     test_epoch_acc = {}
     reg_loss = {}
-    # TRAIN BATCHES =============================
+    # TRAIN BATCHES
     for b_i in range(tr_num_batches):
-      end_b = min([(b_i + 1) * CFG['batch_size'], tr_adj.shape[0]])
+      end_b = min([(b_i + 1) * CFG['batch_size'], tr_num_samples])
       start_b = end_b - CFG['batch_size']
-      batch = {
-        'adj': tr_adj[start_b:end_b],
-        'node_features': {name: tensor[start_b:end_b] for
-          name, tensor in tr_node_features.items()},
-        'adj_labels': tr_adj_labels[start_b:end_b],
-        'nf_labels': {name: tensor[start_b:end_b] for
-          name, tensor in tr_nf_labels.items()},
-        'num_nodes': tr_num_nodes[start_b:end_b],
-      }
-      batch_loss, batch_acc, batch_reg_loss = train_step(models, perceptor, batch, noisy_channel, difficulty)
+      train_batch = get_batch(start_b, end_b, **train_ds)
+      batch_loss, batch_acc, batch_reg_loss = train_step(model, optim, train_batch, difficulty, perceptor)
       tr_epoch_loss += batch_loss
       update_data_dict(tr_epoch_acc, batch_acc)
       update_data_dict(reg_loss, batch_reg_loss)
-      print(f"(TRAIN) e [{e_i}/{CFG['epochs']}] b [{end_b}/{tr_adj.shape[0]}] loss {batch_loss}", end="\r")
-    # TEST BATCHES =============================
+      print(f"(TRAIN) e [{e_i}/{CFG['epochs']}] b [{end_b}/{tr_num_samples}] loss {batch_loss}", end="\r")
+    # TEST BATCHES
     for b_i in range(test_num_batches):
-      end_b = min([(b_i + 1) * CFG['batch_size'], test_adj.shape[0]])
+      end_b = min([(b_i + 1) * CFG['batch_size'], test_num_samples])
       start_b = end_b - CFG['batch_size']
-      batch = {
-        'adj': test_adj[start_b:end_b],
-        'node_features': {name: tensor[start_b:end_b] for
-          name, tensor in test_node_features.items()},
-        'adj_labels': test_adj_labels[start_b:end_b],
-        'nf_labels': {name: tensor[start_b:end_b] for
-          name, tensor in test_nf_labels.items()},
-        'num_nodes': test_num_nodes[start_b:end_b],
-      }
-      batch_loss, batch_acc, _ = test_step(models, perceptor, batch, noisy_channel, difficulty)
+      test_batch = get_batch(start_b, end_b, **test_ds)
+      batch_loss, batch_acc, _ = test_step(model, test_batch, difficulty, perceptor)
       test_epoch_loss += batch_loss
       update_data_dict(test_epoch_acc, batch_acc)
-      print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_adj.shape[0]}] loss {batch_loss}", end="\r")
+      print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{end_b}/{test_num_samples}] loss {batch_loss}", end="\r")
     # END-OF-EPOCH METRICS
     tr_epoch_loss = tr_epoch_loss / tr_num_batches
     test_epoch_loss = test_epoch_loss / test_num_batches
@@ -245,6 +159,7 @@ if __name__ == "__main__":
     print(f"Regularizer losses: {json.dumps(reg_loss, indent=4)}")
     difficulty = update_difficulty(difficulty, tr_epoch_acc)
     print(f"DIFFICULTY FOR NEXT EPOCH: {difficulty}")
+    # write metrics to log
     if CFG['run_name'] != 'NOLOG':
       with train_summary_writer.as_default():
         tf.summary.scalar('loss', tr_epoch_loss, step=e_i)
@@ -257,33 +172,37 @@ if __name__ == "__main__":
     # SAVE CHECKPOINTS
     if test_epoch_loss < best_epoch_loss:
       best_epoch_loss = test_epoch_loss
-      save_ckpts(models, log_dir, 'best')
-    # SAVE VISUAL SAMPLE
+      save_weights(model)
+    # GENERATE VISUAL SAMPLE
     if CFG['VISION'] and e_i % 2 == 0:
-      fig, axes = plt.subplots(2, 2)
-      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, test_adj.shape[0], tf.int32)
+      fig, axes = plt.subplots(4, 2)
+      sample_idxs = tf.random.uniform([CFG['batch_size']], 0, test_num_samples, tf.int32)
       vis_batch = {
-        'adj': tf.gather(test_adj, sample_idxs),
+        'adj': tf.gather(test_ds['adj'], sample_idxs),
         'node_features': {name: tf.gather(tensor, sample_idxs) for
-          name, tensor in test_node_features.items()},
-        'adj_labels': tf.gather(test_adj_labels, sample_idxs),
+          name, tensor in test_ds['node_features'].items()},
+        'adj_labels': tf.gather(test_ds['adj_labels'], sample_idxs),
         'nf_labels': {name: tf.gather(tensor, sample_idxs) for
-          name, tensor in test_nf_labels.items()},
-        'num_nodes': tf.gather(test_num_nodes, sample_idxs),
+          name, tensor in test_ds['nf_labels'].items()},
+        'num_nodes': tf.gather(test_ds['num_nodes'], sample_idxs),
       }
-      Zs = models['encoder'][0](vis_batch)
-      sample_imgs = models['generator'][0](Zs)
+      _, _, sample_imgs, aug_imgs = model(vis_batch, difficulty)
       # scale tanh to visual range
       sample_imgs = (sample_imgs + 1) / 2
+      aug_imgs = (aug_imgs + 1) / 2
       print(f"0: {tf.math.reduce_mean(sample_imgs[0])}")
       print(f"1: {tf.math.reduce_mean(sample_imgs[1])}")
       print(f"2: {tf.math.reduce_mean(sample_imgs[2])}")
       print(f"3: {tf.math.reduce_mean(sample_imgs[3])}")
-      axes[0][0].imshow(sample_imgs[0])
-      axes[0][1].imshow(sample_imgs[1])
-      axes[1][0].imshow(sample_imgs[2])
-      axes[1][1].imshow(sample_imgs[3])
-      plt.savefig(f"{e_i}.png")
+      for img_i in range(4):
+        axes[img_i][0].imshow(sample_imgs[img_i])
+        axes[img_i][1].imshow(aug_imgs[img_i])
+        
+      img_data = io.BytesIO()
+      img_name = f"gallery/{CFG['run_name']}/{e_i}.png"
+      plt.savefig(img_data, format='png')
+      img_data.seek(0)
+      upload_data(img_name, img_data)
       plt.clf()
       plt.cla()
       plt.close()
