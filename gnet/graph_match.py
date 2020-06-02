@@ -1,5 +1,7 @@
 """Brute force graph matching with TensorFlow code. This works for small graphs.
 (For graphs with >6 max nodes, it becomes pretty much unfeasible.)
+
+TODO: Hungarian algorithm
 """
 
 import code
@@ -11,10 +13,10 @@ from cfg import CFG
 
 
 permutations = {
-  3: np.array(list(itertools.permutations(range(3)))),
-  4: np.array(list(itertools.permutations(range(4)))),
-  5: np.array(list(itertools.permutations(range(5)))),
-  6: np.array(list(itertools.permutations(range(6)))),
+  3: tf.convert_to_tensor(np.array(list(itertools.permutations(range(3))))),
+  4: tf.convert_to_tensor(np.array(list(itertools.permutations(range(4))))),
+  5: tf.convert_to_tensor(np.array(list(itertools.permutations(range(5))))),
+  6: tf.convert_to_tensor(np.array(list(itertools.permutations(range(6))))),
 }
 
 
