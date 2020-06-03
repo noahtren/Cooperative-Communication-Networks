@@ -5,6 +5,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 
+from cfg import CFG
+
 
 def gaussian_k(height, width, y, x, sigma, normalized=True):
   """Make a square gaussian kernel centered at (x, y) with sigma as standard deviation.
@@ -298,19 +300,22 @@ class DifferentiableAugment:
     return imgs
 
 
-def get_noisy_channel(func_names=[
-    'static',
-    'blur',
-    'cutout', # tfa
-    'random_scale',
-    'translate', # tfa
-    'resize',
-    'fractional_rotate', # tfa
-    'sharp_tanh'
-  ]):
+def get_noisy_channel():
   """Return a function that adds noise to a batch of images, conditioned on a
   difficulty value.
   """
+  func_names=[
+    'static',
+    'blur',
+    'cutout' if not CFG['TPU'] else None, # tfa
+    'random_scale',
+    'translate' if not CFG['TPU'] else None, # tfa
+    'resize',
+    'fractional_rotate' if not CFG['TPU'] else None, # tfa
+    'sharp_tanh'
+  ]
+  func_names = [n for n in func_names if n is not None]
+
   @tf.function
   def noise_pipeline(images, funcs, DIFFICULTY):
     """Apply a series of functions to images, in order
