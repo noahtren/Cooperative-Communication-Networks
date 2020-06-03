@@ -306,11 +306,12 @@ def label_data(node_features, adj, num_nodes):
   identity = tf.eye(adj.shape[1], adj.shape[1],
     batch_shape=[adj.shape[0]], dtype=tf.int32)
   # only apply identity matrix to nodes that exist
-  grid_max_idxs = tf.tile(tf.expand_dims(tf.math.reduce_max(
-      tf.cast(tf.reshape(tf.where(
-        tf.ones((adj.shape[1], adj.shape[1]))
-      ), (adj.shape[1], adj.shape[1], 2)), tf.int32), axis=-1), 0),
-      [num_nodes.shape[0], 1, 1])
+  r = tf.range(adj.shape[1])
+  grid_max_idxs = tf.tile(
+    tf.expand_dims(
+      tf.math.maximum(r[tf.newaxis], r[:, tf.newaxis]), 0),
+    [num_nodes.shape[0], 1, 1]
+  )
   identity = tf.where(grid_max_idxs < num_nodes[:, tf.newaxis, tf.newaxis],
     identity, tf.zeros_like(identity))
   # NOTE: I ran 2 experiments to prove that this provides a significant
@@ -349,12 +350,11 @@ def get_dataset(language_spec:str, min_num_values:int, max_num_values:int,
   ds = {
     'adj': adj,
     'node_features': node_features,
-    'node_feature_specs': node_feature_specs,
     'num_nodes': num_nodes,
     'adj_labels': adj_labels,
     'nf_labels': nf_labels
   }
-  return ds
+  return ds, node_feature_specs
 
 
 if __name__ == "__main__":

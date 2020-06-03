@@ -44,7 +44,7 @@ class NodeFeatureEmbed(tf.keras.Model):
 
 
 class GlobalLocalAttention(tf.keras.Model):
-  def __init__(self, num_heads:int, graph_hidden_size:int):
+  def __init__(self, num_heads:int, graph_hidden_size:int, max_nodes:int):
     """Multi-head global self-attention (based generally on the original
     Transformer paper) combined with local graph attention (Graph Attention
     Networks.)
@@ -66,6 +66,7 @@ class GlobalLocalAttention(tf.keras.Model):
       hidden_size
     """
     super(GlobalLocalAttention, self).__init__()
+    self.max_nodes = max_nodes
     self.num_heads = num_heads
     self.graph_hidden_size = graph_hidden_size
     self.scale = 1. / tf.math.sqrt(tf.cast(graph_hidden_size, tf.float32))
@@ -109,13 +110,14 @@ class GlobalLocalAttention(tf.keras.Model):
     Es = [self.scale * e for e in Es]
 
     # apply masking for if num_nodes < max_nodes
-    mask = tf.sequence_mask(num_nodes, maxlen=x.shape[1])[:, tf.newaxis]
+    mask = tf.sequence_mask(num_nodes, maxlen=self.max_nodes)[:, tf.newaxis]
     # a bunch of gross syntax that creates a broadcastable 2D mask:
-    grid_max_idxs = tf.tile(tf.expand_dims(tf.math.reduce_max(
-      tf.cast(tf.reshape(tf.where(
-        tf.ones((x.shape[1], x.shape[1]))
-      ), (x.shape[1], x.shape[1], 2)), tf.int32), axis=-1), 0),
-      [num_nodes.shape[0], 1, 1])
+    r = tf.range(self.max_nodes)
+    grid_max_idxs = tf.tile(
+      tf.expand_dims(
+        tf.math.maximum(r[tf.newaxis], r[:, tf.newaxis]), 0),
+      [num_nodes.shape[0], 1, 1]
+    )
     mask = grid_max_idxs < num_nodes[:, tf.newaxis, tf.newaxis]
     Es = [tf.where(mask, e, tf.ones_like(e) * -1e9) for e in Es]
 
@@ -172,8 +174,9 @@ class GraphEncoder(tf.keras.Model):
                graph_hidden_size:int, encoder_attention_layers:int, num_heads:int, **kwargs):
     super(GraphEncoder, self).__init__()
     self._name = 'g_encoder'
+    self.max_nodes = max_nodes
     self.embed = NodeFeatureEmbed(graph_hidden_size, node_feature_specs)
-    self.attns = [GlobalLocalAttention(num_heads, graph_hidden_size) for _ in range(encoder_attention_layers)]
+    self.attns = [GlobalLocalAttention(num_heads, graph_hidden_size, max_nodes) for _ in range(encoder_attention_layers)]
 
 
   def call(self, inputs, debug=False):
@@ -186,7 +189,7 @@ class GraphEncoder(tf.keras.Model):
     for attn_layer in self.attns:
       x = attn_layer({'x': x, 'num_nodes': num_nodes, 'adj': adj})
     # pad based on num_nodes
-    output_mask = tf.sequence_mask(num_nodes, maxlen=x.shape[1])
+    output_mask = tf.sequence_mask(num_nodes, maxlen=self.max_nodes)
     x = tf.where(output_mask[..., tf.newaxis], x, tf.zeros_like(x))
     x = tf.math.reduce_mean(x, axis=1)
     # now scale up based on how many nodes were set to 0
@@ -291,7 +294,7 @@ class GraphDecoder(tf.keras.Model):
       name, size in node_feature_specs.items()}
 
     self.scale = 1. / tf.math.sqrt(tf.cast(graph_hidden_size, tf.float32))
-
+    self.graph_hidden_size = graph_hidden_size
 
   def call(self, Z, debug=False):
     """
@@ -306,14 +309,14 @@ class GraphDecoder(tf.keras.Model):
     # expand fixed-dimensional representation
     expanded_x = self.expand_w(Z)
     expanded_x = tf.nn.swish(expanded_x)
-    x = tf.reshape(expanded_x, [batch_size, self.max_nodes, -1])
+    x = tf.reshape(expanded_x, [batch_size, self.max_nodes, self.graph_hidden_size])
 
     # Positional embedding, simply as a hint so that nodes know the index of
     # other nodes when passing messages
     # (don't have to use sine for positional embeddings since number of nodes
     # is always constant, unlike number of words in a sentence)
-    pos = tf.tile(tf.range(x.shape[1])[tf.newaxis], [x.shape[0], 1])
-    pos = tf.cast(pos, tf.float32)[..., tf.newaxis] / x.shape[1]
+    pos = tf.tile(tf.range(self.max_nodes)[tf.newaxis], [x.shape[0], 1])
+    pos = tf.cast(pos, tf.float32)[..., tf.newaxis] / self.max_nodes
     for pos_embed, pos_norm in zip(self.pos_embeds, self.pos_norms):
       pos = pos_embed(pos)
       pos = pos_norm(pos)
