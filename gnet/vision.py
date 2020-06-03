@@ -223,9 +223,7 @@ class ConvGenerator(tf.keras.Model):
 
 class ConvDiscriminator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
-               c_out:int, NUM_SYMBOLS:int, minimum_filters:int,
-               graph_hidden_size:int,
-               **kwargs):
+               c_out:int, NUM_SYMBOLS:int, minimum_filters:int, **kwargs):
     super(ConvDiscriminator, self).__init__()
     self.downconvs = []
     self.convs = []
@@ -270,7 +268,7 @@ class ConvDiscriminator(tf.keras.Model):
       padding='same',
       **dense_regularization
     )
-    self.pred = tf.keras.layers.Dense(graph_hidden_size, **dense_regularization)
+    self.pred = tf.keras.layers.Dense(NUM_SYMBOLS, **dense_regularization)
     self.gap = tf.keras.layers.GlobalAveragePooling2D()
 
   def call(self, x, debug=False):
@@ -442,11 +440,12 @@ def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
   return percept_loss
 
 
-def make_symbol_data(num_samples):
-  x = tf.random.uniform((num_samples,), 0, CFG['NUM_SYMBOLS'], dtype=tf.int32)
-  x = tf.one_hot(x, depth=CFG['NUM_SYMBOLS'])
-  samples = tf.range(CFG['NUM_SYMBOLS'])
-  samples = tf.one_hot(samples, depth=CFG['NUM_SYMBOLS'])
+def make_symbol_data(num_samples, NUM_SYMBOLS, test=False, **kwargs):
+  _num_samples = int(num_samples * 0.2) if test else num_samples
+  x = tf.random.uniform((_num_samples,), 0, NUM_SYMBOLS, dtype=tf.int32)
+  x = tf.one_hot(x, depth=NUM_SYMBOLS)
+  samples = tf.range(NUM_SYMBOLS)
+  samples = tf.one_hot(samples, depth=NUM_SYMBOLS)
   return x, samples
 
 
