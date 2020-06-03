@@ -1,1 +1,1 @@
-tensorboard --logdir logs --reload_multifile=true
+tensorboard --logdir gs://gestalt-graph/logs --reload_multifile=true
