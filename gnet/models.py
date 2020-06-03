@@ -1,4 +1,5 @@
 import os
+import code
 
 import tensorflow as tf
 
@@ -9,6 +10,7 @@ from aug import get_noisy_channel
 from graph_data import get_dataset
 from vision import make_symbol_data
 from adamlrm import AdamLRM
+from upload import gs_folder_exists
 
 
 def print_model_prefixes(model):
@@ -44,11 +46,11 @@ class VisionModel(tf.keras.Model):
     self.noisy_channel = noisy_channel
 
 
-  def call(self, Z, difficulty, debug=False):
-    imgs = self.generator(Z, debug)
-    aug_imgs = noisy_channel(imgs, difficulty)
-    Z_pred = self.decoder(aug_imgs, debug)
-    return Z_pred
+  def call(self, symbols, difficulty, debug=False):
+    imgs = self.generator(symbols, debug)
+    aug_imgs = self.noisy_channel(imgs, difficulty)
+    predictions = self.decoder(aug_imgs, debug)
+    return predictions, imgs, aug_imgs
 
 
 # ==================== FULL GRAPH-GESTALT MODEL ====================
@@ -79,10 +81,10 @@ def run_dummy_batch(model):
   print(f"RUNNING DUMMY BATCH FOR MODEL: {model}")
   difficulty = tf.convert_to_tensor(0)
   if CFG['JUST_VISION']:
-    Z, _ = make_symbol_data(CFG['batch_size'])
-    Z_pred = model(Z, difficulty, debug=True)
+    symbol_batch, _ = make_symbol_data(**{**CFG, 'num_samples': CFG['batch_size']})
+    symbol_pred = model(symbol_batch, difficulty, debug=True)
   else:
-    batch = get_dataset(**{**CFG, 'num_samples': CFG['batch_size']}, test=False)
+    batch, _ = get_dataset(**{**CFG, 'num_samples': CFG['batch_size']}, test=False)
     if CFG['VISION']:
       adj_pred, nf_pred, _, _ = model(batch, difficulty, debug=True)
     else:
@@ -101,8 +103,8 @@ def run_dummy_batch(model):
 def get_model():
   # graph modules
   if not CFG['JUST_VISION']:
-    ds = get_dataset(**{**CFG, 'num_samples': 1}, test=False)
-    CFG['node_feature_specs'] = ds['node_feature_specs']
+    ds, node_feature_specs = get_dataset(**{**CFG, 'num_samples': 1}, test=False)
+    CFG['node_feature_specs'] = node_feature_specs
     g_encoder = GraphEncoder(**CFG)
     g_decoder = GraphDecoder(**CFG)
   # vision modules
@@ -113,20 +115,25 @@ def get_model():
   # create models
   if CFG['VISION']:
     if CFG['JUST_VISION']:
+      print("Using vision model")
       return VisionModel(generator, decoder, noisy_channel)     
     else:
+      print("Using full model")
       return FullModel(g_encoder, g_decoder, generator, decoder, noisy_channel)
   else:
+    print("Using graph model")
     return GraphModel(g_encoder, g_decoder)    
 
 
 def load_weights(model, path_prefix):
   model_path = f"{path_prefix}checkpoints/{CFG['load_name']}"
-  if os.path.exists(model_path):
-    print(f"Checkpoint exists at {model_path}, loaded these weights!")
+  path_exists = False
+  print(f"Attempting to load weights from {model_path}...")
+  try:
     model.load_weights(os.path.join(model_path, 'best'))
-  else:
-    print(f"No checkpoint found. Weights are initialized randomly.")
+  except Exception as e:
+    print(e)
+    print("No weights found")
 
 
 def save_weights(model, path_prefix):
