@@ -1,7 +1,11 @@
+"""Interpolate between different inputs to produce smooth animations that
+illustrate the differences between patterns.
+"""
+
+# don't use GPU
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used
-
+os.environ["CUDA_VISIBLE_DEVICES"]=""
 
 import code
 from typing import List
@@ -46,15 +50,21 @@ def get_tree_results(steps_between:int, models):
   # generate a list of distinct expression trees
   adj_lists = [
     [[], [], [0, 1]],
-    [[], [], [0, 1]]
+    [[], [], [0, 1]],
+    [[], [], [0, 1]],
+    [[], [], [0, 1]],
   ]
   value_tokens_lists = [
-    ['a', 'a', '-'],
-    ['a', 'a', '+']
+    ['a', 'a', '+'],
+    ['a', 'b', '+'],
+    ['a', 'c', '+'],
+    ['a', 'd', '+'],
   ]
   order_lists = [
     [-1, -1, -1],
-    [-1, -1, -1]
+    [-1, -1, -1],
+    [-1, -1, -1],
+    [-1, -1, -1],
   ]
   # convert to TensorGraphs
   tgs = []
@@ -63,6 +73,12 @@ def get_tree_results(steps_between:int, models):
       value_tokens_lists[i], order_lists[i], CFG['max_nodes'])
     tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
     tgs.append(tg)
+  # debugging with a random tree from other algo
+  tg = None
+  while tg is None:
+    tree_args = TensorGraph.random_tree(**CFG)
+    tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
+  tgs.append(tg)
 
   adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(tgs)
 
@@ -104,6 +120,10 @@ def get_tree_results(steps_between:int, models):
 
 
 def circle_crop(img):
+  """Zeroes all pixels that don't fall within a radius of half the length of the
+  square image. This adds a nice visual effect and reflects all information in
+  the image if the images have perfect accuracy in the noisiest channel setting.
+  """
   y_dim = img.shape[0]
   x_dim = img.shape[1]
   coords = tf.where(tf.ones((y_dim, x_dim)))
