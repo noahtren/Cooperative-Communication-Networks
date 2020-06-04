@@ -69,7 +69,7 @@ class FullModel(tf.keras.Model):
     Z = self.g_encoder(batch, debug)
     imgs = self.generator(Z, debug)
     aug_imgs = self.noisy_channel(imgs, difficulty)
-    Z_pred = self.decoder(imgs, debug)
+    Z_pred = self.decoder(aug_imgs, debug)
     adj_out, nf_out = self.g_decoder(Z_pred, debug)
     return adj_out, nf_out, imgs, aug_imgs
 
@@ -134,6 +134,7 @@ def load_weights(model, path_prefix):
   except Exception as e:
     print(e)
     print("No weights found")
+    # TODO: handle problems where embedding sizes don't match
 
 
 def save_weights(model, path_prefix):
