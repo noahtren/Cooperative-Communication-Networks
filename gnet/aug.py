@@ -1,11 +1,13 @@
 import code
 import random
+import imageio
 
 import tensorflow as tf
 import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 
 from cfg import CFG
+import experimental_aug
 
 
 def gaussian_k(height, width, y, x, sigma, normalized=True):
@@ -39,7 +41,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def static(imgs, DIFFICULTY, randomize):
+  def static(imgs, DIFFICULTY):
     """Gaussian noise, or "static"
     """
     STATIC_STDDEVS = [
@@ -70,109 +72,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def translate(imgs, DIFFICULTY, randomize):
-    """Shift each img a pixel distance from minval to maxval, using zero padding
-    For efficiency, each batch is augmented in the same way, but randomized
-    between batches.
-    """
-    SHIFT_PERCENTS = [
-      0.00,
-      0.025,
-      0.05,
-      0.07,
-      0.09,
-      0.1,
-      0.11,
-      0.12,
-      0.13,
-      0.14,
-      0.15,
-      0.16,
-      0.17,
-      0.18,
-      0.19,
-      0.20
-    ]
-    img_shape = imgs[0].shape
-    batch_size = imgs.shape[0]
-    max_shift_percent = tf.gather(SHIFT_PERCENTS, DIFFICULTY)
-    average_img_dim = (img_shape[0] + img_shape[1]) / 2
-    minval = tf.cast(max_shift_percent * average_img_dim * -1, tf.int32)
-    maxval = tf.cast(max_shift_percent * average_img_dim, tf.int32)
-    shifts = tf.random.uniform([imgs.shape[0], 2], minval=minval, maxval=maxval + 1, dtype=tf.int32)
-    shifts = tf.cast(shifts, tf.float32)
-    imgs = tfa.image.translate(imgs, shifts, interpolation='BILINEAR')
-    return imgs
-  
-
-  @staticmethod
-  def resize(imgs, DIFFICULTY, randomize):
-    """Resize an image, either shrinking it or growing it. This will cause some
-    regions of the image to be occluded, in the case that it is grown.
-    """
-    RESIZE_SCALES = [
-      [1, 1],
-      [0.9, 1.1],
-      [0.85, 1.15],
-      [0.8, 1.2],
-      [0.75, 1.25],
-      [0.7, 1.3],
-      [0.65, 1.325],
-      [0.6, 1.35],
-      [0.55, 1.375],
-      [0.50, 1.4],
-      [0.48, 1.42],
-      [0.46, 1.44],
-      [0.44, 1.46],
-      [0.42, 1.48],
-      [0.4, 1.5],
-      [0.4, 1.5],
-    ]
-    img_shape = imgs[0].shape
-    scales = tf.gather(RESIZE_SCALES, DIFFICULTY)
-    scales = tf.random.uniform([2], minval=scales[0], maxval=scales[1])
-    target_width = tf.cast(scales[0] * img_shape[1], tf.int32)
-    target_height = tf.cast(scales[1] * img_shape[0], tf.int32)
-    imgs = tf.image.resize(imgs, (target_height, target_width))
-    imgs = tf.image.resize_with_crop_or_pad(imgs, img_shape[0], img_shape[1])
-    return imgs
-  
-
-  @staticmethod
-  def fractional_rotate(imgs, DIFFICULTY, randomize):
-    """Rotate images, each with a unique number of radians selected uniformly
-    from a range.
-    Note: this function is not TPU-friendly
-    """
-    pi = 3.14159265
-    RADIANS = [
-      0,
-      1 * pi / 30,
-      2 * pi / 30,
-      3 * pi / 30,
-      4 * pi / 30,
-      5 * pi / 30,
-      6 * pi / 30,
-      7 * pi / 30,
-      8 * pi / 30,
-      9 * pi / 30,
-      9.5 * pi / 30,
-      10 * pi / 30,
-      10.5 * pi / 30,
-      11 * pi / 30,
-      11.5 * pi / 30,
-      12 * pi / 30,
-    ]
-    min_angle = tf.gather(RADIANS, DIFFICULTY) * -1
-    max_angle = tf.gather(RADIANS, DIFFICULTY)
-    batch_size = imgs.shape[0]
-    angles = tf.random.uniform([batch_size], minval=min_angle, maxval=max_angle)
-    imgs = tfa.image.rotate(imgs, angles, interpolation='BILINEAR')
-    return imgs
-
-
-  @staticmethod
-  def blur(imgs, DIFFICULTY, randomize):
+  def blur(imgs, DIFFICULTY):
     """Apply blur via a Gaussian convolutional kernel
     """
     STDDEVS = [
@@ -214,7 +114,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def random_scale(imgs, DIFFICULTY, randomize):
+  def random_scale(imgs, DIFFICULTY):
     """Randomly scales all of the values in each channel
     """
     MULTIPLY_SCALES = [
@@ -243,7 +143,7 @@ class DifferentiableAugment:
 
 
   @staticmethod
-  def cutout(imgs, DIFFICULTY, randomize):
+  def cutout(imgs, DIFFICULTY):
     MASK_PERCENT = [
       0.00,
       0.075,
@@ -275,7 +175,7 @@ class DifferentiableAugment:
     return imgs
 
   @staticmethod
-  def sharp_tanh(imgs, DIFFICULTY, randomize):
+  def sharp_tanh(imgs, DIFFICULTY):
     TANH_AMT = [
       1.0,
       1.1,
@@ -300,19 +200,92 @@ class DifferentiableAugment:
     return imgs
 
 
+  @staticmethod
+  def transform(imgs, DIFFICULTY):
+    DEGREES = [
+      0.,
+      2.,
+      4.,
+      6.,
+      8.,
+      10.,
+      12.,
+      14.,
+      16.,
+      18.,
+      20.,
+      22.,
+      24.,
+      26.,
+      28.,
+      30.,
+    ]
+    RESIZE_SCALES = [
+      0,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.325,
+      0.35,
+      0.375,
+      0.4,
+      0.42,
+      0.44,
+      0.46,
+      0.48,
+      0.5,
+      0.5
+    ]
+    SHIFT_PERCENTS = [
+      0.00,
+      0.025,
+      0.05,
+      0.07,
+      0.09,
+      0.1,
+      0.11,
+      0.12,
+      0.13,
+      0.14,
+      0.15,
+      0.16,
+      0.17,
+      0.18,
+      0.19,
+      0.20
+    ]
+    max_rot_deg = tf.gather(DEGREES, DIFFICULTY)
+    max_shear_deg = tf.gather(DEGREES, DIFFICULTY) / 2.
+    max_zoom_diff_pct = tf.gather(RESIZE_SCALES, DIFFICULTY)
+    max_shift_pct = tf.gather(SHIFT_PERCENTS, DIFFICULTY)
+    return experimental_aug.transform_batch(
+      imgs,
+      max_rot_deg,
+      max_shear_deg,
+      max_zoom_diff_pct,
+      max_shift_pct)
+
+
 def get_noisy_channel():
   """Return a function that adds noise to a batch of images, conditioned on a
   difficulty value.
   """
+  def no_aug(images, DIFFICULTY):
+    return images
+
+  if not CFG['use_aug']:
+    print("NOTE: not using visual augmentation pipeline")
+    return no_aug
+
   func_names=[
     'static',
     'blur',
     'cutout' if not CFG['TPU'] else None, # tfa
     'random_scale',
-    'translate' if not CFG['TPU'] else None, # tfa
-    'resize',
-    'fractional_rotate' if not CFG['TPU'] else None, # tfa
-    'sharp_tanh'
+    'sharp_tanh',
+    'transform'
   ]
   func_names = [n for n in func_names if n is not None]
 
@@ -324,7 +297,7 @@ def get_noisy_channel():
       return images
     else:
       for func in funcs:
-        images = func(images, DIFFICULTY, randomize=True)
+        images = func(images, DIFFICULTY)
       return images
   funcs = []
   for func_name in func_names:
@@ -338,7 +311,10 @@ if __name__ == "__main__":
   os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
   os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used
 
-  imgs = tf.random.normal([4, 128, 128, 3])
+  img = imageio.imread('kitty.jpg')
+  img = tf.cast(img, tf.float32) / 255.
+  imgs = tf.tile(img[tf.newaxis], [4, 1, 1, 1])
+  
   channel = get_noisy_channel()
   for diff in tf.range(16):
     print(diff)
