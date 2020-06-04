@@ -12,7 +12,7 @@
   
   "__NOTE: batch size is per replica__": "",
   "https://cloud.google.com/tpu/docs/troubleshooting#memory-tensor-padding": "",
-  "batch_size": 8,
+  "batch_size": 32,
   "epochs": 3000,
   "label_smoothing": 0.0,
 
@@ -34,15 +34,15 @@
   
   "vision_hidden_size": 512,
   "c_out": 1,
-  "y_dim": 256,
-  "x_dim": 256,
-  "R": 8,
+  "y_dim": 128,
+  "x_dim": 128,
+  "R": 7,
 
   "use_perceptual_loss": false,
   "use_distance_loss": false,
   "mse_loss_only": false,
   
-  "NUM_SYMBOLS": 1024,
+  "NUM_SYMBOLS": 256,
   "minimum_filters": 16,
   "Z_embed_num": 3,
   "cppn_loc_embed_dim": 32,

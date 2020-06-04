@@ -313,10 +313,10 @@ def main():
       print(f"1: {tf.math.reduce_mean(sample_imgs[1])}")
       print(f"2: {tf.math.reduce_mean(sample_imgs[2])}")
       print(f"3: {tf.math.reduce_mean(sample_imgs[3])}")
-      fig, axes = plt.subplots(4, 2)
+      fig, axes = plt.subplots(2, 4)
       for img_i in range(4):
-        axes[img_i][0].imshow(sample_imgs[img_i])
-        axes[img_i][1].imshow(aug_imgs[img_i])
+        axes[0][img_i].imshow(sample_imgs[img_i])
+        axes[1][img_i].imshow(aug_imgs[img_i])
       gallery_dir = f"gallery/{CFG['run_name']}"
       img_name = os.path.join(gallery_dir, f"{e_i}.png")
       img_data = io.BytesIO()
