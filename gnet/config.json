@@ -1,18 +1,18 @@
 {
   "__NOTE: one of the following must be true__": "",
-  "JUST_VISION": true,
+  "JUST_VISION": false,
   "JUST_GRAPH": false,
-  "FULL": false,
+  "FULL": true,
   "use_aug": true,
 
   "USE_GS": true,
-  "run_name": "cloud_vision_only_newaug_test_night",
+  "run_name": "cloud_full_test",
   "best_pretrain": "cloud_graph_pretrain_3",
-  "load_name": null,
+  "load_name": "cloud_graph_pretrain_3",
   
   "__NOTE: batch size is per replica__": "",
   "https://cloud.google.com/tpu/docs/troubleshooting#memory-tensor-padding": "",
-  "batch_size": 32,
+  "batch_size": 16,
   "epochs": 3000,
   "label_smoothing": 0.0,
 
