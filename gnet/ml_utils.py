@@ -10,7 +10,6 @@ try:
   CFG
 except NameError:
   from cfg import CFG
-from upload import upload_file
 
 
 def shuffle_together(*tensors):
@@ -49,3 +48,4 @@ cnn_regularization = {
   'kernel_regularizer': tf.keras.regularizers.l2(1e-4),
   'bias_regularizer': tf.keras.regularizers.l2(1e-4),
 }
+

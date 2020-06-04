@@ -12,13 +12,21 @@ from cfg import CFG
 from ml_utils import dense_regularization, cnn_regularization
 
 
+def get_coord_ints(y_dim, x_dim):
+  ys = tf.range(y_dim)[tf.newaxis]
+  xs = tf.range(x_dim)[:, tf.newaxis]
+  coord_ints = tf.stack([ys+xs-ys, xs+ys-xs], axis=2)
+  return coord_ints
+
 def generate_scaled_coordinate_hints(batch_size, y_dim, x_dim):
   """Generally used as the input to a CPPN, but can also augment each layer
   of a ConvNet with location hints
   """
   spatial_scale = 1. / max([y_dim, x_dim])
-  coords = tf.where(tf.ones((y_dim, x_dim)))
-  coord_ints = tf.reshape(coords, (y_dim, x_dim, 2))
+  coord_ints = get_coord_ints(y_dim, x_dim)
+  # TODO: validate that coord ints are correct, just like below:
+  # coords = tf.where(tf.ones((y_dim, x_dim)))
+  # coord_ints = tf.reshape(coords, (y_dim, x_dim, 2))
   coords = tf.cast(coord_ints, tf.float32)
   coords = tf.stack([coords[:, :, 0] * spatial_scale,
                       coords[:, :, 1] * spatial_scale], axis=-1)
@@ -55,8 +63,7 @@ class CPPN(tf.keras.Model):
     batch_size = Z.shape[0]
 
     # get pixel locations and embed pixels
-    coords = tf.where(tf.ones((self.y_dim, self.x_dim)))
-    coord_ints = tf.reshape(coords, (self.y_dim, self.x_dim, 2))
+    coord_ints = get_coord_ints(self.y_dim, self.x_dim)
     coords = tf.cast(coord_ints, tf.float32)
     coords = tf.stack([coords[:, :, 0] * self.spatial_scale,
                        coords[:, :, 1] * self.spatial_scale], axis=-1)

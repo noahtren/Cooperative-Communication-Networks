@@ -26,6 +26,7 @@ def populate_cfg(CFG):
 
 def parse_cfg(CFG):
   CFG['save_checkpoint_every'] = CFG['cloud_save_checkpoint_every']
+  CFG['image_every'] = CFG['cloud_image_every']
   CFG['root_filepath'] = CFG['gs_root_filepath']
   CFG['VISION'] = CFG['JUST_VISION'] or CFG['FULL']
   # if CFG['USE_S3']:

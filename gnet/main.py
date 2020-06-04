@@ -155,7 +155,8 @@ def main():
         batch_loss, acc, reg_loss = graph_or_full_predict(model, batch, difficulty, perceptor)
       return batch_loss, acc, reg_loss
 
-    # @tf.function
+
+    @tf.function
     def train_step(batch, difficulty):
       with tf.GradientTape(persistent=True) as tape:
         batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
@@ -169,6 +170,7 @@ def main():
       optim.apply_gradients(zip(grads, model.trainable_variables))
       return batch_loss, acc, reg_loss
 
+
     @tf.function
     def test_step(batch, difficulty):
       batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
@@ -179,7 +181,8 @@ def main():
       #   reg_loss = replica_ctx.all_reduce("mean", reg_loss)
       return batch_loss, acc, reg_loss
 
-    @tf.function
+
+    # @tf.function
     def aggregate_results(batch_loss, acc, reg_loss):
       batch_loss = strategy.reduce("mean", batch_loss, axis=None)
       out_acc = {}
@@ -303,7 +306,7 @@ def main():
         best_epoch_loss = test_epoch_loss
         save_weights(model, path_prefix)
     # GENERATE VISUAL SAMPLE
-    if CFG['VISION'] and e_i % 2 == 0:
+    if CFG['VISION'] and e_i % CFG['image_every'] == 0 and e_i != 0:
       sample_imgs, aug_imgs = get_visual_samples(test_ds, model, test_num_samples, difficulty)
       # debug printing to make sure none are all 0 or all 1 (vanishing gradient)
       print(f"0: {tf.math.reduce_mean(sample_imgs[0])}")
@@ -319,10 +322,11 @@ def main():
       img_data = io.BytesIO()
       plt.savefig(img_data, format='png')
       img_data.seek(0)
-      gs_upload_blob_from_memory(img_data, gallery_dir)
+      gs_upload_blob_from_memory(img_data, img_name)
       plt.clf()
       plt.cla()
       plt.close()
+
 
 if __name__ == "__main__":
   main()
