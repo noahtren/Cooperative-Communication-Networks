@@ -3,7 +3,7 @@ import code
 
 import tensorflow as tf
 
-from cfg import CFG
+from cfg import get_config; CFG = get_config()
 from vision import Generator, Decoder
 from graph_models import GraphEncoder, GraphDecoder
 from aug import get_noisy_channel

@@ -9,7 +9,8 @@ import itertools
 
 import numpy as np
 import tensorflow as tf
-from cfg import CFG
+
+from cfg import get_config; CFG = get_config()
 
 
 permutations = {

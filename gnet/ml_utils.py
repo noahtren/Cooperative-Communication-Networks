@@ -6,11 +6,8 @@ import code
 import os
 
 import tensorflow as tf
-try:
-  CFG
-except NameError:
-  from cfg import CFG
 
+from cfg import get_config; CFG = get_config()
 
 def shuffle_together(*tensors):
   idxs = tf.range(tensors[0].shape[0])

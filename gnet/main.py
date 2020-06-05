@@ -9,9 +9,9 @@ import tensorflow as tf
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+from cfg import get_config; CFG = get_config()
 from graph_match import minimum_loss_permutation
 from vision import Perceptor, perceptual_loss, make_symbol_data
-from cfg import CFG
 from graph_data import get_dataset
 from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
 from models import get_model, get_optim, run_dummy_batch, load_weights, save_weights

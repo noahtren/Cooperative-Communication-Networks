@@ -8,7 +8,7 @@ import code
 import boto3
 from google.cloud import storage
 
-from cfg import CFG
+from cfg import get_config; CFG = get_config()
 
 S3_BUCKET_NAME = CFG['s3_bucket']
 GS_BUCKET_NAME = CFG['gs_bucket']
@@ -58,6 +58,12 @@ def gs_upload_blob_from_string(source_string, destination_blob_name, print_str=F
   if print_str:
     print(source_string)
   print(f"File uploaded to {destination_blob_name}")
+
+
+def gs_download_blob_as_string(blob_name):
+  blob = gs_bucket.blob(blob_name)
+  blob_str = blob.download_as_string()
+  return blob_str
 
 
 def gs_folder_exists(file_name):

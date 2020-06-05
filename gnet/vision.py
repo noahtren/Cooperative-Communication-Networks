@@ -1,15 +1,10 @@
-# import os
-# os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-# os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used
-
-
 import code
 
 import tensorflow as tf
 import tensorflow_addons as tfa
-from cfg import CFG
 
 from ml_utils import dense_regularization, cnn_regularization
+from cfg import get_config; CFG = get_config()
 
 
 def get_coord_ints(y_dim, x_dim):
@@ -18,15 +13,13 @@ def get_coord_ints(y_dim, x_dim):
   coord_ints = tf.stack([ys+xs-ys, xs+ys-xs], axis=2)
   return coord_ints
 
+
 def generate_scaled_coordinate_hints(batch_size, y_dim, x_dim):
   """Generally used as the input to a CPPN, but can also augment each layer
   of a ConvNet with location hints
   """
   spatial_scale = 1. / max([y_dim, x_dim])
   coord_ints = get_coord_ints(y_dim, x_dim)
-  # TODO: validate that coord ints are correct, just like below:
-  # coords = tf.where(tf.ones((y_dim, x_dim)))
-  # coord_ints = tf.reshape(coords, (y_dim, x_dim, 2))
   coords = tf.cast(coord_ints, tf.float32)
   coords = tf.stack([coords[:, :, 0] * spatial_scale,
                       coords[:, :, 1] * spatial_scale], axis=-1)
@@ -222,7 +215,15 @@ class ConvGenerator(tf.keras.Model):
     
     if debug: tf.print(x.shape)
     x = self.out_conv(x)
-    x = tf.nn.tanh(x)
+    # we want the generator to simulate tanh, but also apply channel-wise
+    # softmax for distinct colored visuals.
+    # so, replace tanh with per-channel softmax scaled to the tanh range
+    
+    # x = tf.nn.softmax(x, axis=-1)
+    # x = x * 2. - 1.
+
+    x = tf.tanh(x)
+
     if x.shape[-1] == 1:
       x = tf.tile(x, [1, 1, 1, 3])
     return x
@@ -307,7 +308,6 @@ class ConvDiscriminator(tf.keras.Model):
     if debug: tf.print(x.shape)
     x = self.out_conv(x)
     x = self.gap(x)
-    # remove this when training on graph task
     if CFG['JUST_VISION']:
       x = self.pred(x)
       x = tf.nn.softmax(x)
@@ -378,6 +378,10 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
 
   This use case: match the distances between pairs of images perceptions with
   the distances between pairs of symbol labels.
+
+  Update: this is likely not necessary because graph pretraining actually hasn't
+  shown to provide a major qualitative improvement, so there is nothing
+  particularly special about the graph embeddings vs. visual latent spaces.
   """
   n = rep1.shape[0]
   assert n >= 4
@@ -422,7 +426,7 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
 
 
 def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
-  """Returns a negative value, where higher magnitudes describe further distances.
+  """Return a negative value, where higher magnitudes describe further distances.
   This is to encourage samples to be perceptually more distant from each other.
   i.e., they are repelled from each other.
   """
