@@ -8,26 +8,7 @@ import matplotlib.pyplot as plt
 
 from cfg import get_config; CFG = get_config()
 import experimental_aug
-
-
-def gaussian_k(height, width, y, x, sigma, normalized=True):
-  """Make a square gaussian kernel centered at (x, y) with sigma as standard deviation.
-  Returns:
-      A 2D array of size [height, width] with a Gaussian kernel centered at (x, y)
-  """
-  # cast arguments used in calculations
-  x = tf.cast(x, tf.float32)
-  y = tf.cast(y, tf.float32)
-  sigma = tf.cast(sigma, tf.float32)
-  # create indices
-  xs = tf.range(0, width, delta=1., dtype=tf.float32)
-  ys = tf.range(0, height, delta=1., dtype=tf.float32)
-  ys = tf.expand_dims(ys, 1)
-  # apply gaussian function to indices based on distance from x, y
-  gaussian = tf.math.exp(-((xs - x)**2 + (ys - y)**2) / (2 * (sigma**2)))
-  if normalized:
-      gaussian = gaussian / tf.math.reduce_sum(gaussian) # all values will sum to 1
-  return gaussian
+from ml_utils import gaussian_k
 
 
 class DifferentiableAugment:
