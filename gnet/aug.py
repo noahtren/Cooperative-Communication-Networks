@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 
-from cfg import CFG
+from cfg import get_config; CFG = get_config()
 import experimental_aug
 
 
@@ -105,11 +105,11 @@ class DifferentiableAugment:
     # convolve
     out_channels = []
     for c_ in range(c):
-      in_channel = tf.expand_dims(imgs[:, :, :, c_], -1)
+      in_channel = tf.expand_dims(imgs[..., c_], -1)
       out_channel = tf.nn.conv2d(in_channel, gauss_kernel, strides=1, padding="SAME")
-      out_channel = tf.squeeze(out_channel)
+      out_channel = out_channel[..., 0]
       out_channels.append(out_channel)
-    imgs = out_channels[0] if len(out_channels) == 1 else tf.stack(out_channels, axis=-1)
+    imgs = tf.stack(out_channels, axis=-1)
     return imgs
 
 
@@ -282,7 +282,6 @@ def get_noisy_channel():
   func_names=[
     'static',
     'blur',
-    'cutout' if not CFG['TPU'] else None, # tfa
     'random_scale',
     'sharp_tanh',
     'transform'
