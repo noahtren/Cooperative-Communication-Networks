@@ -49,7 +49,7 @@ print("REPLICAS: ", num_replicas)
 
 def update_difficulty(difficulty, epoch_acc):
   target_metric = 'symbols' if CFG['JUST_VISION'] else 'values'
-  if epoch_acc[target_metric] >= 0.99 and difficulty < 15:
+  if epoch_acc[target_metric] >= 0.995 and difficulty < 15:
     difficulty += 1
   if epoch_acc[target_metric] < 0.1 and difficulty > 0:
     difficulty -= 1
@@ -85,7 +85,7 @@ def get_visual_samples(test_ds, model, test_num_samples, difficulty):
         name, tensor in test_ds['nf_labels'].items()},
       'num_nodes': tf.gather(test_ds['num_nodes'], sample_idxs),
     }
-    _, _, sample_imgs, aug_imgs = model(vis_batch, difficulty)
+    _, _, sample_imgs, aug_imgs, _, _ = model(vis_batch, difficulty)
   # scale tanh to visual range
   sample_imgs = (sample_imgs + 1) / 2
   aug_imgs = (aug_imgs + 1) / 2
