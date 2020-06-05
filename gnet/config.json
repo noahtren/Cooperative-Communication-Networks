@@ -6,15 +6,15 @@
   "use_aug": true,
 
   "USE_GS": true,
-  "run_name": "cloud_full_test",
+  "run_name": "cloud_full_color_2",
   "best_pretrain": "cloud_graph_pretrain_3",
-  "load_name": "cloud_graph_pretrain_3",
+  "load_name": "cloud_full_color_2",
   
   "__NOTE: batch size is per replica__": "",
   "https://cloud.google.com/tpu/docs/troubleshooting#memory-tensor-padding": "",
   "batch_size": 16,
   "epochs": 3000,
-  "label_smoothing": 0.0,
+  "label_smoothing": 0.0001,
 
   "max_nodes": 5,
   "language_spec": "arithmetic",
@@ -33,7 +33,7 @@
   "decoder_lr": 5e-5,
   
   "vision_hidden_size": 512,
-  "c_out": 1,
+  "c_out": 3,
   "y_dim": 128,
   "x_dim": 128,
   "R": 7,
