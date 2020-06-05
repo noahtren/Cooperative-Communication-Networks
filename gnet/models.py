@@ -71,7 +71,7 @@ class FullModel(tf.keras.Model):
     aug_imgs = self.noisy_channel(imgs, difficulty)
     Z_pred = self.decoder(aug_imgs, debug)
     adj_out, nf_out = self.g_decoder(Z_pred, debug)
-    return adj_out, nf_out, imgs, aug_imgs
+    return adj_out, nf_out, imgs, aug_imgs, Z, Z_pred
 
 
 def run_dummy_batch(model):
@@ -86,7 +86,7 @@ def run_dummy_batch(model):
   else:
     batch, _ = get_dataset(**{**CFG, 'num_samples': CFG['batch_size']}, test=False)
     if CFG['VISION']:
-      adj_pred, nf_pred, _, _ = model(batch, difficulty, debug=True)
+      adj_pred, nf_pred, _, _, _, _ = model(batch, difficulty, debug=True)
     else:
       adj_pred, nf_pred = model(batch, debug=True)
     print("Input shapes:")
@@ -125,15 +125,25 @@ def get_model():
     return GraphModel(g_encoder, g_decoder)    
 
 
-def load_weights(model, path_prefix):
-  model_path = f"{path_prefix}checkpoints/{CFG['load_name']}"
-  path_exists = False
-  print(f"Attempting to load weights from {model_path}...")
+def load_weights(model, path_prefix, use_cache=True):
+  model_path = f"{path_prefix}checkpoints/{CFG['load_name']}/best"
+
+  # check cache
+  if use_cache:
+    cached_path = f"checkpoints/{CFG['load_name']}"
+    if os.path.exists(cached_path):
+      model.load_weights(os.path.join(cached_path, 'best'))
+      return
+  
   try:
-    model.load_weights(os.path.join(model_path, 'best'))
+    print(f"Attempting to load weights from {model_path}...")
+    model.load_weights(model_path)
+    if use_cache:
+      cached_path = f"checkpoints/{CFG['load_name']}/best"
+      print(f"Saving cache to {cached_path}")
+      model.save_weights(cached_path)
   except Exception as e:
-    print(e)
-    print("No weights found")
+    print(f"No weights found. Error: {e}")
     # TODO: handle problems where embedding sizes don't match
 
 
