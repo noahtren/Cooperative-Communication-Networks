@@ -15,14 +15,30 @@ import numpy as np
 import imageio
 from tqdm import tqdm
 
-from encoder import Encoder
-from decoder import GraphDecoder
-from vision import Generator, Decoder
-from train_vision import make_data
-from cfg import CFG
-from ml_utils import load_ckpts
-from graph_data import TensorGraph, get_dataset, label_data
-from graph_match import minimum_loss_permutation
+# load custom config from cloud
+from cfg import read_config, read_config_from_string, set_config
+from upload import gs_download_blob_as_string
+
+run_name = 'cloud_vision_only_newaug_test'
+# run_name = 'cloud_vision_only_newaug_test_night'
+
+
+def get_loaded_model_config(run_name=None):
+  if run_name is None:
+    local_cfg = read_config()
+    run_name = local_cfg['load_name']
+    assert run_name is not None
+  blob_name = f"logs/{run_name}/config.json"
+  cfg_str = gs_download_blob_as_string(blob_name)
+  cfg = read_config_from_string(cfg_str)
+  cfg['load_name'] = run_name
+  return cfg
+
+CFG = get_loaded_model_config(run_name)
+set_config(CFG)
+
+from models import get_model, get_optim, run_dummy_batch, load_weights, \
+  save_weights
 
 
 def make_sliding_window_symbols(points:List[int], steps_between:int):
@@ -137,41 +153,27 @@ def circle_crop(img):
 
 
 if __name__ == "__main__":
-  CFG['num_samples'] = 1
-  _, _, node_feature_specs, _, \
-  _, _ = get_dataset(**CFG, test=False)
-  CFG['node_feature_specs'] = node_feature_specs
-  encoder = Encoder(**CFG)
-  generator = Generator()
-  discriminator = Decoder()
-  decoder = GraphDecoder(**CFG)
+  """Currently (and probably always) all visualizations are made locally
+  """
+  path_prefix = CFG['root_filepath']
+  model = get_model()
+  run_dummy_batch(model)
+  load_weights(model, path_prefix)
+  optim = get_optim()
+  difficulty = tf.convert_to_tensor(1)
+  
   if CFG['JUST_VISION']:
-    data = make_sliding_window_symbols([3,8,9,3], 30)
-    generator(tf.expand_dims(data[0], 0))
-    models = {'generator': [generator, None]}
-    load_ckpts(models, CFG['load_vision_name'], 'latest')
+    symbols = make_sliding_window_symbols([3,8,9,3], 30)
     writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
-    for i, val in tqdm(enumerate(data)):
-      val = tf.expand_dims(val, 0)
-      img = generator(val)
+    for i, symbol in tqdm(enumerate(symbols)):
+      symbol = tf.expand_dims(symbol, 0)
+      predictions, img, aug_img = model(symbol, difficulty)
       img = tf.squeeze((img + 1) / 2)
       img = tf.cast(img * 255, tf.uint8)
       img = circle_crop(img)
       writer.append_data(np.array(img))
     writer.close()
+  elif CFG['FULL']:
+    raise NotImplementedError
   else:
-    models = {
-      'encoder': [encoder, None],
-      'generator': [generator, None],
-      'discriminator': [discriminator, None],
-      'decoder': [decoder, None]
-    }
-    load_ckpts(models, CFG['load_graph_name'], 'best')
-    states, imgs, acc = get_tree_results(30, models)
-    writer = imageio.get_writer(f"gallery/{CFG['load_graph_name']}_animation.mp4", format='FFMPEG', fps=20)
-    for i, img in tqdm(enumerate(imgs)):
-      img = tf.squeeze((img + 1) / 2)
-      img = tf.cast(img * 255, tf.uint8)
-      img = circle_crop(img)
-      writer.append_data(np.array(img))
-    writer.close()
+    assert RuntimeError(f"Nothing to animate for a model ({CFG['run_name']}) that is graph only!")
