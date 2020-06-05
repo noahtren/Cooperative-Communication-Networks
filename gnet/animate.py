@@ -17,9 +17,15 @@ from tqdm import tqdm
 
 # load custom config from cloud
 from cfg import read_config, read_config_from_string, set_config
+from graph_data import TensorGraph, label_data
 from upload import gs_download_blob_as_string
 
-run_name = 'cloud_vision_only_newaug_test'
+run_name = 'cloud_full_color_2'
+
+# pretty noisy
+# run_name = 'cloud_vision_only_newaug_test'
+
+# pretty boring
 # run_name = 'cloud_vision_only_newaug_test_night'
 
 
@@ -62,26 +68,12 @@ def make_sliding_window_symbols(points:List[int], steps_between:int):
   return data
 
 
-def get_tree_results(steps_between:int, models):
-  # generate a list of distinct expression trees
-  adj_lists = [
-    [[], [], [0, 1]],
-    [[], [], [0, 1]],
-    [[], [], [0, 1]],
-    [[], [], [0, 1]],
-  ]
-  value_tokens_lists = [
-    ['a', 'a', '+'],
-    ['a', 'b', '+'],
-    ['a', 'c', '+'],
-    ['a', 'd', '+'],
-  ]
-  order_lists = [
-    [-1, -1, -1],
-    [-1, -1, -1],
-    [-1, -1, -1],
-    [-1, -1, -1],
-  ]
+def get_tree_results(steps_between:int,
+                     model,
+                     adj_lists,
+                     value_tokens_lists,
+                     order_lists,
+                     debug=False):
   # convert to TensorGraphs
   tgs = []
   for i in range(len(adj_lists)):
@@ -90,48 +82,54 @@ def get_tree_results(steps_between:int, models):
     tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
     tgs.append(tg)
   # debugging with a random tree from other algo
-  tg = None
-  while tg is None:
-    tree_args = TensorGraph.random_tree(**CFG)
-    tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
-  tgs.append(tg)
+  if debug:
+    tg = None
+    while tg is None:
+      tree_args = TensorGraph.random_tree(**CFG)
+      tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
+    tgs.append(tg)
 
   adj, node_features, node_feature_specs, num_nodes = TensorGraph.instances_to_tensors(tgs)
+  nf_labels, adj_labels = label_data(node_features, adj, num_nodes)
 
-  _ = models['encoder'][0]({'node_features': node_features, 'num_nodes': num_nodes, 'adj': adj})
-  Z = models['encoder'][0]({'node_features': node_features, 'num_nodes': num_nodes, 'adj': adj})
-  x = Z
+  batch = {
+    'adj': adj,
+    'node_features': node_features,
+    'num_nodes': num_nodes
+  }
+  difficulty = tf.convert_to_tensor(1)
+  adj_out, nf_out, imgs, aug_imgs, Z, Z_pred = model(batch, difficulty)
 
   states = []
-  for i in range(x.shape[0] - 1):
-    diff = x[i + 1] - x[i]
+  for i in range(Z.shape[0] - 1):
+    diff = Z[i + 1] - Z[i]
     for j in range(steps_between):
       ratio = j / steps_between
-      state = x[i] + diff * ratio
+      state = Z[i] + diff * ratio
       states.append(state)
   states = tf.stack(states, axis=0)
   # generate images
 
-  _ = models['generator'][0](Z)
-  imgs = models['generator'][0](Z)
+  # _ = models['generator'][0](Z)
+  # imgs = models['generator'][0](Z)
 
   # evaluate performance of models
-  nf_labels, adj_labels = label_data(node_features, adj)
+  # nf_labels, adj_labels = label_data(node_features, adj)
 
-  _ = models['discriminator'][0](imgs)
-  Z = models['discriminator'][0](imgs)
+  # _ = models['discriminator'][0](imgs)
+  # Z = models['discriminator'][0](imgs)
 
-  _ = models['decoder'][0](x)
-  adj_pred, nf_pred = models['decoder'][0](Z)
+  # _ = models['decoder'][0](x)
+  # adj_pred, nf_pred = models['decoder'][0](Z)
 
-  batch_loss, acc = minimum_loss_permutation(
-    adj_labels,
-    nf_labels,
-    adj_pred,
-    nf_pred
-  )
-  imgs = models['generator'][0](states)
-  return states, imgs, acc
+  # batch_loss, acc = minimum_loss_permutation(
+  #   adj_labels,
+  #   nf_labels,
+  #   adj_pred,
+  #   nf_pred
+  # )
+  imgs = model.generator(states)
+  return states, imgs, # acc
 
 
 
@@ -152,28 +150,59 @@ def circle_crop(img):
   return img
 
 
+def write_images(imgs, circle_crop=False):
+  writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
+  for img in tqdm(imgs):
+    img = tf.squeeze((img + 1) / 2)
+    img = tf.cast(img * 255, tf.uint8)
+    if circle_crop:
+      img = circle_crop(img)
+    writer.append_data(np.array(img))
+  writer.close()
+
+
 if __name__ == "__main__":
   """Currently (and probably always) all visualizations are made locally
   """
+  # TODO: consider cacheing so that multiple experiments can be run on same weights
   path_prefix = CFG['root_filepath']
   model = get_model()
   run_dummy_batch(model)
   load_weights(model, path_prefix)
   optim = get_optim()
-  difficulty = tf.convert_to_tensor(1)
   
   if CFG['JUST_VISION']:
     symbols = make_sliding_window_symbols([3,8,9,3], 30)
-    writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
-    for i, symbol in tqdm(enumerate(symbols)):
+    imgs = []
+    difficulty = tf.convert_to_tensor(1)
+    for symbol in tqdm(symbols):
       symbol = tf.expand_dims(symbol, 0)
       predictions, img, aug_img = model(symbol, difficulty)
-      img = tf.squeeze((img + 1) / 2)
-      img = tf.cast(img * 255, tf.uint8)
-      img = circle_crop(img)
-      writer.append_data(np.array(img))
-    writer.close()
+      imgs.append(img)
+    write_images(imgs)
   elif CFG['FULL']:
-    raise NotImplementedError
+    adj_lists = [
+      [[], [], [0, 1]],
+      [[], [], [0, 1]],
+      [[], [], [0, 1]],
+      [[], [], [0, 1]],
+    ]
+    value_tokens_lists = [
+      ['a', 'a', '+'],
+      ['a', 'b', '+'],
+      ['a', 'c', '+'],
+      ['a', 'd', '+'],
+    ]
+    order_lists = [
+      [-1, -1, -1],
+      [-1, -1, -1],
+      [-1, -1, -1],
+      [-1, -1, -1],
+    ]
+    states, imgs = get_tree_results(
+      20, model, adj_lists, value_tokens_lists, order_lists
+    )
+    write_images(imgs)
+    code.interact(local={**locals(), **globals()})
   else:
     assert RuntimeError(f"Nothing to animate for a model ({CFG['run_name']}) that is graph only!")
