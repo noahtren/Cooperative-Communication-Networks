@@ -126,7 +126,7 @@ def main():
     def graph_or_full_predict(model, batch, difficulty, perceptor):
       reg_loss = {}
       if CFG['VISION']:
-        adj_pred, nf_pred, imgs, aug_imgs = model(batch, difficulty)
+        adj_pred, nf_pred, imgs, aug_imgs, _, _ = model(batch, difficulty)
         if CFG['use_perceptual_loss']:
           features = perceptor(imgs)
           percept_loss = perceptual_loss(features)

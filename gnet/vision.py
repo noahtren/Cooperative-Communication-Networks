@@ -218,11 +218,10 @@ class ConvGenerator(tf.keras.Model):
     # we want the generator to simulate tanh, but also apply channel-wise
     # softmax for distinct colored visuals.
     # so, replace tanh with per-channel softmax scaled to the tanh range
-    
-    # x = tf.nn.softmax(x, axis=-1)
-    # x = x * 2. - 1.
+    x = tf.nn.softmax(x, axis=-1)
+    x = x * 2. - 1.
 
-    x = tf.tanh(x)
+    # x = tf.tanh(x)
 
     if x.shape[-1] == 1:
       x = tf.tile(x, [1, 1, 1, 3])
