@@ -56,10 +56,10 @@ issue.
 
 Below are some ideas for future work.
 
-* Adversarial games. Working on adding a "Spy" generator that attempts to learn
-the same representations as the original generator and thus trick the decoder.
-Training would be similar to a GAN, but the "true" dataset is also a generative
-model.
+* Adversarial games. I'm working on adding a "Spy" generator that attempts to
+learn the same representations as the original generator and thus trick the
+decoder. Training would be similar to a GAN, but the dataset is replaced with a 
+collaborative generator model.
 
 * Perceptual loss. Encouraging symbols to be perceptually different from each
 other via some external metric, such as a pre-trained CNN.
@@ -67,5 +67,7 @@ other via some external metric, such as a pre-trained CNN.
 ## Disclaimer
 
 I am not a formal ML researcher, and I currently don't have any claims about the
-theoretical signifiance of this work. I'm happy to share the code and respond to
-questions!
+theoretical signifiance of this work. However, I'm happy to share this code and
+respond to questions!
+
+The code is MIT-licensed. Do with it what you'd like.
