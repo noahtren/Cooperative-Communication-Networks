@@ -1,5 +1,4 @@
-"""Optimizer utilities. Found on Phil Culliton's Kaggle page.
-https://www.kaggle.com/philculliton/bert-optimization
+"""Generic utilities for machine learning.
 """
 
 import code
@@ -7,7 +6,7 @@ import os
 
 import tensorflow as tf
 
-from cfg import get_config; CFG = get_config()
+from .cfg import get_config; CFG = get_config()
 
 
 def shuffle_together(*tensors):

@@ -3,13 +3,13 @@ import code
 
 import tensorflow as tf
 
-from cfg import get_config; CFG = get_config()
-from vision import Generator, Decoder, Spy, make_symbol_data
-from graph_models import GraphEncoder, GraphDecoder
-from aug import get_noisy_channel
-from graph_data import get_dataset
-from adamlrm import AdamLRM
-from upload import gs_folder_exists
+from .cfg import get_config; CFG = get_config()
+from .vision import Generator, Decoder, Spy, make_symbol_data
+from .graph_models import GraphEncoder, GraphDecoder
+from .aug import get_noisy_channel
+from .graph_data import get_dataset
+from .adamlrm import AdamLRM
+from .upload import gs_folder_exists
 
 
 def print_model_prefixes(model):
@@ -80,7 +80,6 @@ class FullModel(tf.keras.Model):
 def run_dummy_batch(model):
   """Used to populate weights before loading.
   """
-  # TODO: test if this is necessary
   print(f"RUNNING DUMMY BATCH FOR MODEL: {model}")
   difficulty = tf.convert_to_tensor(0)
   if CFG['JUST_VISION']:
@@ -132,6 +131,10 @@ def get_model():
 
 
 def load_weights(model, path_prefix, use_cache=False):
+  if CFG['load_name'] is None:
+    print("Not loading any previous weights for this run")
+    return
+
   model_path = f"{path_prefix}checkpoints/{CFG['load_name']}/best"
 
   # check local cache
@@ -185,7 +188,6 @@ def get_spy_optim():
     return optim
   else:
     return None
-  
 
 
 if __name__ == "__main__":

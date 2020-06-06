@@ -1,8 +1,11 @@
 """Interpolate between different inputs to produce smooth animations that
 illustrate the differences between patterns.
+
+NOTE: this script only works if the model's weights and config are hosted
+on GCS.
 """
 
-# don't use GPU
+# don't use GPU for animation (allows doing this while a model is training locally)
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]=""
@@ -16,18 +19,12 @@ import numpy as np
 import imageio
 from tqdm import tqdm
 
-# load custom config from cloud
+# load config from cloud
 from cfg import read_config, read_config_from_string, set_config
 from upload import gs_download_blob_as_string
 
-# see https://www.notion.so/tftnotes/Visual-Programming-Autoencoder-b487383f80834898928be7b2c7e45d63
-# for gallery of best results
-
-# NOTE: there are some black and white graph examples that I haven't visualized yet
 
 run_name = 'cloud_full_test'
-# run_name = 'cloud_vision_only_newaug_test_night'
-
 
 
 def get_loaded_model_config(run_name=None):
@@ -98,7 +95,7 @@ def get_tree_results(steps_between:int,
       value_tokens_lists[i], order_lists[i], CFG['max_nodes'])
     tg = TensorGraph.tree_to_instance(*tree_args, CFG['max_nodes'], CFG['language_spec'])
     tgs.append(tg)
-  # debugging with a random tree from other algo
+  # debugging with a random tree from training dataset algo
   if debug:
     tg = None
     while tg is None:
@@ -137,26 +134,6 @@ def get_tree_results(steps_between:int,
       states.append(state)
       texts.append(text)
   states = tf.stack(states, axis=0)
-  # generate images
-
-  # _ = models['generator'][0](Z)
-  # imgs = models['generator'][0](Z)
-
-  # evaluate performance of models
-  # nf_labels, adj_labels = label_data(node_features, adj)
-
-  # _ = models['discriminator'][0](imgs)
-  # Z = models['discriminator'][0](imgs)
-
-  # _ = models['decoder'][0](x)
-  # adj_pred, nf_pred = models['decoder'][0](Z)
-
-  # batch_loss, acc = minimum_loss_permutation(
-  #   adj_labels,
-  #   nf_labels,
-  #   adj_pred,
-  #   nf_pred
-  # )
   imgs = []
   for state in tqdm(states):
     img = model.generator(tf.expand_dims(state, 0))

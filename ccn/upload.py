@@ -17,7 +17,6 @@ code_path = os.path.dirname(os.path.abspath(__file__))
 s3_bucket = boto3.resource('s3').Bucket(S3_BUCKET_NAME)
 s3_client = boto3.client('s3')
 # GS
-GS_BUCKET_NAME = 'gestalt-graph'
 gs_client = storage.Client()
 gs_bucket = gs_client.bucket(GS_BUCKET_NAME)
 

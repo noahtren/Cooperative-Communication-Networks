@@ -6,9 +6,9 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 
-from cfg import get_config; CFG = get_config()
-import experimental_aug
-from ml_utils import gaussian_k
+from .cfg import get_config; CFG = get_config()
+from .ml_utils import gaussian_k
+import .experimental_aug
 
 
 class DifferentiableAugment:
@@ -287,6 +287,7 @@ def get_noisy_channel():
 
 
 if __name__ == "__main__":
+  # don't use GPU
   import os
   os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
   os.environ["CUDA_VISIBLE_DEVICES"]=""  # specify which GPU(s) to be used

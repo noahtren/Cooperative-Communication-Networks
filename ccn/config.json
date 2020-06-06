@@ -1,28 +1,28 @@
 {
   "__NOTE: one of the following must be true__": "",
-  "JUST_VISION": true,
-  "JUST_GRAPH": false,
+  "JUST_VISION": false,
+  "JUST_GRAPH": true,
   "FULL": false,
   "use_aug": true,
-  "use_spy": true,
+  "use_spy": false,
 
-  "USE_GS": true,
-  "run_name": "cloud_wasstertein_full_loss",
-  "best_pretrain": "cloud_graph_pretrain_3",
+  "USE_GS": false,
+  "run_name": "local_test",
+  "best_pretrain": null,
   "load_name": null,
   
   "__NOTE: batch size is per replica__": "",
-  "https://cloud.google.com/tpu/docs/troubleshooting#memory-tensor-padding": "",
   "batch_size": 16,
   "epochs": 3000,
   "label_smoothing": 0.00001,
-
+  "NUM_SYMBOLS": 16,
+  
   "max_nodes": 6,
   "language_spec": "arithmetic",
   "min_num_values": 1,
   "max_num_values": 4,
   "__optimal_num_samples__": 16384,
-  "num_samples": 16384,
+  "num_samples": 1024,
   "graph_hidden_size": 512,
   "encoder_attention_layers": 3,
   "decoder_attention_layers": 3,
@@ -33,7 +33,7 @@
   "generator_lr": 5e-5,
   "decoder_lr": 5e-5,
   "spy_lr": 5e-5,
-
+  
   "_g_encoder_lr": 1e-6,
   "_g_decoder_lr": 1e-6,
   "_generator_lr": 5e-5,
@@ -58,15 +58,13 @@
   "use_distance_loss": false,
   "mse_loss_only": false,
   
-  "NUM_SYMBOLS": 16,
   "minimum_filters": 16,
   "Z_embed_num": 3,
   "cppn_loc_embed_dim": 32,
   "vision_model": "conv",
   "vision_models": ["conv", "cppn"],
-  "DISC_MODEL" : "ResNet50V2",
-  "pretrained_disc_name": "ResNet50V2",
   "use_custom_disc": true,
+  "pretrained_disc_name": "ResNet50V2",
 
   "default_save_checkpoint_every": 1,
   "cloud_save_checkpoint_every": 25,

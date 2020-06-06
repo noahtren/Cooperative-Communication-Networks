@@ -1,4 +1,4 @@
-from gnet.graph_data import TensorGraph
+from ccn.graph_data import TensorGraph
 
 
 def test_arithmetic():

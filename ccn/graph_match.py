@@ -18,6 +18,8 @@ permutations = {
   4: tf.convert_to_tensor(np.array(list(itertools.permutations(range(4))))),
   5: tf.convert_to_tensor(np.array(list(itertools.permutations(range(5))))),
   6: tf.convert_to_tensor(np.array(list(itertools.permutations(range(6))))),
+  7: tf.convert_to_tensor(np.array(list(itertools.permutations(range(7))))),
+  8: tf.convert_to_tensor(np.array(list(itertools.permutations(range(8))))),
 }
 
 

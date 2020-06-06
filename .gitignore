@@ -1,7 +1,7 @@
 .vscode/
 __pycache__/
 .pytest_cache/
-gnet.egg-info/
+ccn.egg-info/
 gviz/
 logs/
 checkpoints/

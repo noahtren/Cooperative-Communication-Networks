@@ -4,7 +4,11 @@ import code
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from ml_utils import dense_regularization
+from .ml_utils import dense_regularization
+
+
+# TODO: consider adding auxiliary "certainty" prediction when using
+# Wassertein loss training. Otherwise, MSE loss seems like a good idea
 
 
 class NodeFeatureEmbed(tf.keras.Model):
@@ -49,21 +53,14 @@ class GlobalLocalAttention(tf.keras.Model):
     Transformer paper) combined with local graph attention (Graph Attention
     Networks.)
 
-    ---
     Attention Is All You Need by Vaswani et al.
     https://arxiv.org/abs/1706.03762
-    ---
+
     Graph Attention Networks by Veličković et al.
     https://arxiv.org/abs/1710.10903
-    ---
-
 
     This layer incorporates a multi-head self-attention module as well as
     a feed-forward layer with the swish activation function.
-
-    Args:
-      num_heads
-      hidden_size
     """
     super(GlobalLocalAttention, self).__init__()
     self.max_nodes = max_nodes
@@ -303,7 +300,6 @@ class GraphDecoder(tf.keras.Model):
     fixed-dimensional representation of a graph that will be reconstructed to
     its nodes.
     """
-    # TODO: implement debugging
     batch_size = Z.shape[0]
 
     # expand fixed-dimensional representation

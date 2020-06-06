@@ -33,6 +33,7 @@ def generate_scaled_coordinate_hints(batch_size, y_dim, x_dim):
 
 class CPPN(tf.keras.Model):
   """Compositional Pattern-Producing Network
+  NOTE: unused currently, but available to experiment with
 
   Embeds each (x,y,r) -- where r is radius from center -- pair triple via a
   series of dense layers, combines with graph representation (z) and regresses
@@ -217,7 +218,7 @@ class ConvGenerator(tf.keras.Model):
     x = self.out_conv(x)
 
     # we want the generator to simulate tanh, but also apply channel-wise
-    # softmax for distinct colored visuals.
+    # softmax for distinct colored visuals
     # so, replace tanh with per-channel softmax scaled to the tanh range
     x = tf.nn.softmax(x, axis=-1)
     x = x * 2. - 1.
@@ -336,19 +337,19 @@ def Spy():
 def get_pretrained_info():
   if CFG['pretrained_disc_name'] == 'Xception':
     ModelFunc = tf.keras.applications.Xception
-    # PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
-    PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
+    PerceptorLayerName = 'block3_sepconv2_bn' # 4x downscale
+    # PerceptorLayerName = 'block4_sepconv2_bn' # 8x downscale
   elif CFG['pretrained_disc_name'] == 'ResNet50V2':
     ModelFunc = tf.keras.applications.ResNet50V2
-    # PerceptorLayerName = 'conv2_block3_out' # 4x downscale
-    PerceptorLayerName = 'conv3_block4_out' # 8x downscale
+    PerceptorLayerName = 'conv2_block3_out' # 4x downscale
+    # PerceptorLayerName = 'conv3_block4_out' # 8x downscale
     # PerceptorLayerName = 'conv4_block6_out' # 16x downscale
     # PerceptorLayerName = 'conv5_block2_out' # 32x downscale
   elif CFG['pretrained_disc_name'] == 'VGG16':
     ModelFunc = tf.keras.applications.VGG16
-    # PerceptorLayerName = 'block3_conv3' # 4x downscale
+    PerceptorLayerName = 'block3_conv3' # 4x downscale
     # PerceptorLayerName = 'block4_conv3' # 8x downscale
-    PerceptorLayerName = 'block5_conv3' # 16x downscale
+    # PerceptorLayerName = 'block5_conv3' # 16x downscale
   return ModelFunc, PerceptorLayerName
 
 
@@ -392,6 +393,7 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
   Update: this is likely not necessary because graph pretraining actually hasn't
   shown to provide a major qualitative improvement, so there is nothing
   particularly special about the graph embeddings vs. visual latent spaces.
+  Still curious!
   """
   n = rep1.shape[0]
   assert n >= 4
@@ -419,7 +421,8 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
 
   # NORMALIZE DISTANCES
   def zero_one_normalize(tensor):
-    # dont subtract minimum because this fails with all samples being equal
+    # don't subtract minimum because this fails with all samples being equal
+    # TODO: solve by checking for this in advance
     # tensor = tensor - tf.math.reduce_min(tensor)
     tensor = tensor / tf.math.reduce_max(tensor)
     return tensor
@@ -427,7 +430,7 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
   diffs1 = zero_one_normalize(diffs1)
   diffs2 = zero_one_normalize(diffs2)
   
-  # FIND THE DISTANCE BETWEEN DISTANCES (HAHA)
+  # FIND THE DISTANCE BETWEEN DISTANCES (haha)
   diffs1 = diffs1[:, tf.newaxis]
   diffs2 = diffs2[:, tf.newaxis]
   error = tf.keras.losses.binary_crossentropy(diffs1, diffs2)
@@ -436,7 +439,7 @@ def vector_distance_loss(rep1, rep2, max_pairs=1_000):
 
 
 def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
-  """Return a negative value, where higher magnitudes describe further distances.
+  """Return a negative value, where greater magnitudes describe further distances.
   This is to encourage samples to be perceptually more distant from each other.
   i.e., they are repelled from each other.
   """
@@ -462,6 +465,8 @@ def perceptual_loss(features, max_pairs=1_000, MULTIPLIER=-1):
 
 
 def make_symbol_data(num_samples, NUM_SYMBOLS, test=False, **kwargs):
+  """Generate training data for toy problem (no GraphVAE)
+  """
   _num_samples = int(num_samples * 0.2) if test else num_samples
   x = tf.random.uniform((_num_samples,), 0, NUM_SYMBOLS, dtype=tf.int32)
   x = tf.one_hot(x, depth=NUM_SYMBOLS)

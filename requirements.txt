@@ -6,6 +6,3 @@ tqdm
 imageio
 imageio-ffmpeg
 google-cloud-storage
-
-# conda:
-graphviz
