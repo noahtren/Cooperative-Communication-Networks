@@ -5,3 +5,5 @@ ccn.egg-info/
 gviz/
 logs/
 checkpoints/
+gallery/
+augmentation_examples/
