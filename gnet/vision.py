@@ -215,13 +215,14 @@ class ConvGenerator(tf.keras.Model):
     
     if debug: tf.print(x.shape)
     x = self.out_conv(x)
+
     # we want the generator to simulate tanh, but also apply channel-wise
     # softmax for distinct colored visuals.
     # so, replace tanh with per-channel softmax scaled to the tanh range
     x = tf.nn.softmax(x, axis=-1)
     x = x * 2. - 1.
 
-    # x = tf.tanh(x)
+    # x = tf.nn.tanh(x)
 
     if x.shape[-1] == 1:
       x = tf.tile(x, [1, 1, 1, 3])
@@ -320,6 +321,16 @@ def Generator():
     Generator = CPPN(**CFG)
   Generator._name = 'generator'
   return Generator
+
+
+def Spy():
+  """Just like generator, but ideally has a smaller hidden size (less parameters)
+  than the true generator.
+  """
+  hidden_size = CFG['spy_hidden_size']
+  Spy = ConvGenerator(**{**CFG, 'vision_hidden_size': hidden_size})
+  Spy._name = 'spy'
+  return Spy
 
 
 def get_pretrained_info():
@@ -457,6 +468,20 @@ def make_symbol_data(num_samples, NUM_SYMBOLS, test=False, **kwargs):
   samples = tf.range(NUM_SYMBOLS)
   samples = tf.one_hot(samples, depth=NUM_SYMBOLS)
   return x, samples
+
+
+def hex_to_rgb(hex_str):
+  return [int(hex_str[i:i+2], 16) for i in (0, 2, 4)]
+
+
+def color_composite(imgs):
+  out_channels = tf.zeros(imgs.shape[:3] + [3])
+  for i, hex_str in enumerate(CFG["composite_colors"]):
+    rgb = tf.convert_to_tensor(hex_to_rgb(hex_str))
+    rgb = tf.cast(rgb, tf.float32) / 255.
+    composite_channel = imgs[..., i, tf.newaxis] * rgb
+    out_channels += composite_channel
+  return out_channels
 
 
 if __name__ == "__main__":

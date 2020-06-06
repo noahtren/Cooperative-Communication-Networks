@@ -44,6 +44,7 @@ def get_loaded_model_config(run_name=None):
 CFG = get_loaded_model_config(run_name)
 set_config(CFG)
 
+from vision import color_composite
 from models import get_model, get_optim, run_dummy_batch, load_weights, \
   save_weights
 from ml_utils import gaussian_k
@@ -159,20 +160,21 @@ def get_tree_results(steps_between:int,
   imgs = []
   for state in tqdm(states):
     img = model.generator(tf.expand_dims(state, 0))
+    if 'composite_colors' in CFG:
+      out_img = color_composite(out_img)
     imgs.append(img[0])
   imgs = tf.stack(imgs, axis=0)
   return states, imgs, texts # acc
 
 
-def annotate_image(img, text, use_side=64):
+def annotate_image(img, text, side_width=64):
   """Annotate an image with the given text
   """
   from PIL import Image, ImageDraw, ImageFont
   orig_width = img.shape[1]
   fs = 16 # font size
-  if use_side:
-    zeros = tf.zeros((img.shape[0], use_side, img.shape[2]))
-    img = tf.concat([img, zeros], axis=1)
+  zeros = tf.zeros((img.shape[0], side_width, img.shape[2]))
+  img = tf.concat([img, zeros], axis=1)
   img = np.array(img).astype(np.uint8)
   image = Image.fromarray(img)
   draw = ImageDraw.Draw(image)
@@ -194,23 +196,19 @@ def annotate_image(img, text, use_side=64):
     else:
       return min_height - shift
 
-  if use_side:
-    # top
-    top_text = text['top']['text']
-    top_color = int(text['top']['amount'] * 255)
-    top_color = f"rgb({top_color},{top_color},{top_color})"
-    top_height = get_height(text['top']['amount'], path='top')
-    draw.text((orig_width + 8, top_height), top_text, fill=top_color, font=font)
-    # bottom
-    bot_text = text['bottom']['text']
-    bot_color = int(text['bottom']['amount'] * 255)
-    bot_color = f"rgb({bot_color},{bot_color},{bot_color})"
-    bot_height = get_height(text['bottom']['amount'], path='bot')
-    draw.text((orig_width + 8, bot_height), bot_text, fill=bot_color, font=font)
+  # top
+  top_text = text['top']['text']
+  top_color = int(text['top']['amount'] * 255)
+  top_color = f"rgb({top_color},{top_color},{top_color})"
+  top_height = get_height(text['top']['amount'], path='top')
+  draw.text((orig_width + 8, top_height), top_text, fill=top_color, font=font)
+  # bottom
+  bot_text = text['bottom']['text']
+  bot_color = int(text['bottom']['amount'] * 255)
+  bot_color = f"rgb({bot_color},{bot_color},{bot_color})"
+  bot_height = get_height(text['bottom']['amount'], path='bot')
+  draw.text((orig_width + 8, bot_height), bot_text, fill=bot_color, font=font)
 
-  else:
-    # TODO
-    draw.text((0, 0), text, fill='rgb(255,255,255)', font=font)
   return np.array(image)
 
 
@@ -280,11 +278,10 @@ def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=
 if __name__ == "__main__":
   """Currently (and probably always) all visualizations are made locally
   """
-  # TODO: consider cacheing so that multiple experiments can be run on same weights
   path_prefix = CFG['root_filepath']
   model = get_model()
   run_dummy_batch(model)
-  load_weights(model, path_prefix)
+  load_weights(model, path_prefix, use_cache=True)
   optim = get_optim()
   
   if CFG['JUST_VISION']:
@@ -294,6 +291,8 @@ if __name__ == "__main__":
     for symbol in tqdm(symbols):
       symbol = tf.expand_dims(symbol, 0)
       predictions, out_img, aug_img = model(symbol, difficulty)
+      if 'composite_colors' in CFG:
+        out_img = color_composite(out_img)
       imgs.append(out_img[0])
     write_images(imgs, texts=texts)
 
@@ -370,6 +369,5 @@ if __name__ == "__main__":
       40, model, adj_lists, value_tokens_lists, order_lists, token_strings
     )
     write_images(imgs, scale_down=1, texts=texts)
-    code.interact(local={**locals(), **globals()})
   else:
     assert RuntimeError(f"Nothing to animate for a model ({CFG['run_name']}) that is graph only!")
