@@ -5,6 +5,3 @@ ccn.egg-info/
 gviz/
 logs/
 checkpoints/
-*.png
-*.mp4
-*.gif

@@ -34,14 +34,17 @@ and passed through the autoencoder, and the latent space is visual.
 
 ### `JUST_VISION` experiments
 
-![](/media/cloud_vision_only_newaug_test_night_animation.mp4)
-![](/media/cloud_vision_only_color_animation.mp4)
+![](/media/cloud_vision_only_newaug_test_night_animation.gif)
+
+![](/media/cloud_vision_only_color_animation.gif)
 
 ### `FULL` experiments
 
-![](/media/cloud_full_test_animation.mp4)
-![](/media/cloud_full_color_2_animation.mp4)
-![](/media/cloud_6node_full_color_animation.mp4)
+![](/media/cloud_full_test_animation.gif)
+
+![](/media/cloud_full_color_2_animation.gif)
+
+![](/media/cloud_6node_full_color_animation.gif)
 
 
 ## Contributing
