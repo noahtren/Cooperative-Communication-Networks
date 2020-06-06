@@ -1,4 +1,4 @@
-![Cooperative Communication Networks](ccn.png)
+![Cooperative Communication Networks](/media/ccn.png)
 
 # Cooperative Communication Networks
 
@@ -10,7 +10,7 @@ constraints.
 
 ## Usage
 
-To run this locally, run `python gnet/main.py`. A training session will begin
+To run this locally, run `python ccn/main.py`. A training session will begin
 according to the configuration set in `config.json`. By default, 4 snapshots
 are saved to the `gallery` folder at the end of every epoch.
 
@@ -34,14 +34,14 @@ and passed through the autoencoder, and the latent space is visual.
 
 ### `JUST_VISION` experiments
 
-![](media/cloud_vision_only_newaug_test_night_animation.mp4)
-![](media/cloud_vision_only_color_animation.mp4)
+![](/media/cloud_vision_only_newaug_test_night_animation.mp4)
+![](/media/cloud_vision_only_color_animation.mp4)
 
 ### `FULL` experiments
 
-![](media/cloud_full_test_animation.mp4)
-![](media/cloud_full_color_2_animation.mp4)
-![](media/cloud_6node_full_color_animation.mp4)
+![](/media/cloud_full_test_animation.mp4)
+![](/media/cloud_full_color_2_animation.mp4)
+![](/media/cloud_6node_full_color_animation.mp4)
 
 
 ## Contributing
