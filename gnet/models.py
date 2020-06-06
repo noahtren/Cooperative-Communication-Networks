@@ -4,11 +4,10 @@ import code
 import tensorflow as tf
 
 from cfg import get_config; CFG = get_config()
-from vision import Generator, Decoder
+from vision import Generator, Decoder, Spy, make_symbol_data
 from graph_models import GraphEncoder, GraphDecoder
 from aug import get_noisy_channel
 from graph_data import get_dataset
-from vision import make_symbol_data
 from adamlrm import AdamLRM
 from upload import gs_folder_exists
 
@@ -38,16 +37,18 @@ class GraphModel(tf.keras.Model):
 
 # ==================== VISION-ONLY MODEL ====================
 class VisionModel(tf.keras.Model):
-  def __init__(self, generator, decoder, noisy_channel):
+  def __init__(self, generator, decoder, noisy_channel, spy=None):
     super(VisionModel, self).__init__()
     self._name = 'root_model'
     self.generator = generator
     self.decoder = decoder
     self.noisy_channel = noisy_channel
+    self.spy = spy
 
 
-  def call(self, symbols, difficulty, debug=False):
-    imgs = self.generator(symbols, debug)
+  def call(self, symbols, difficulty, debug=False, spy_turn=False):
+    gen = self.spy if spy_turn else self.generator
+    imgs = gen(symbols, debug)
     aug_imgs = self.noisy_channel(imgs, difficulty)
     predictions = self.decoder(aug_imgs, debug)
     return predictions, imgs, aug_imgs
@@ -55,7 +56,7 @@ class VisionModel(tf.keras.Model):
 
 # ==================== FULL GRAPH-GESTALT MODEL ====================
 class FullModel(tf.keras.Model):
-  def __init__(self, g_encoder, g_decoder, generator, decoder, noisy_channel):
+  def __init__(self, g_encoder, g_decoder, generator, decoder, noisy_channel, spy=None):
     super(FullModel, self).__init__()
     self._name = 'root_model'
     self.g_encoder = g_encoder
@@ -63,11 +64,13 @@ class FullModel(tf.keras.Model):
     self.generator = generator
     self.decoder = decoder
     self.noisy_channel = noisy_channel
+    self.spy = spy
 
 
-  def call(self, batch, difficulty, debug=False):
+  def call(self, batch, difficulty, debug=False, spy_turn=False):
+    gen = self.spy if spy_turn else self.generator
     Z = self.g_encoder(batch, debug)
-    imgs = self.generator(Z, debug)
+    imgs = gen(Z, debug)
     aug_imgs = self.noisy_channel(imgs, difficulty)
     Z_pred = self.decoder(aug_imgs, debug)
     adj_out, nf_out = self.g_decoder(Z_pred, debug)
@@ -110,25 +113,28 @@ def get_model():
   # vision modules
   if CFG['VISION']:
     generator = Generator()
+    spy = None
+    if CFG['use_spy']:
+      spy = Spy()
     decoder = Decoder()
     noisy_channel = get_noisy_channel()
   # create models
   if CFG['VISION']:
     if CFG['JUST_VISION']:
       print("Using vision model")
-      return VisionModel(generator, decoder, noisy_channel)     
+      return VisionModel(generator, decoder, noisy_channel, spy)
     else:
       print("Using full model")
-      return FullModel(g_encoder, g_decoder, generator, decoder, noisy_channel)
+      return FullModel(g_encoder, g_decoder, generator, decoder, noisy_channel, spy)
   else:
     print("Using graph model")
     return GraphModel(g_encoder, g_decoder)    
 
 
-def load_weights(model, path_prefix, use_cache=True):
+def load_weights(model, path_prefix, use_cache=False):
   model_path = f"{path_prefix}checkpoints/{CFG['load_name']}/best"
 
-  # check cache
+  # check local cache
   if use_cache:
     cached_path = f"checkpoints/{CFG['load_name']}"
     if os.path.exists(cached_path):
@@ -144,7 +150,6 @@ def load_weights(model, path_prefix, use_cache=True):
       model.save_weights(cached_path)
   except Exception as e:
     print(f"No weights found. Error: {e}")
-    # TODO: handle problems where embedding sizes don't match
 
 
 def save_weights(model, path_prefix):
@@ -157,14 +162,35 @@ def get_optim():
     'root_model/g_encoder': CFG['g_encoder_lr'],
     'root_model/g_decoder': CFG['g_decoder_lr'],
     'root_model/generator': CFG['generator_lr'],
-    'root_model/decoder':   CFG['decoder_lr'],
+    'root_model/decoder': CFG['decoder_lr'],
+    'root_model/spy': 0.,
+    # fix for tf.function weirdness
+    'root_model_1/g_encoder': CFG['g_encoder_lr'],
+    'root_model_1/g_decoder': CFG['g_decoder_lr'],
+    'root_model_1/generator': CFG['generator_lr'],
+    'root_model_1/decoder': CFG['decoder_lr'],
+    'root_model_1/spy': 0.
   }
   optim = AdamLRM(lr=1., lr_multiplier=lr_multiplier)
   return optim
 
 
+def get_spy_optim():
+  if CFG['use_spy']:
+    lr_multiplier = {
+      'root_model/spy': CFG['spy_lr'],
+      'root_model_1/spy': CFG['spy_lr'],
+    }
+    optim = AdamLRM(lr=1., lr_multiplier=lr_multiplier)
+    return optim
+  else:
+    return None
+  
+
+
 if __name__ == "__main__":
   model = get_model()
   optim = get_optim()
+  spy_optim = get_spy_optim()
   run_dummy_batch(model)
   print_model_prefixes(model)

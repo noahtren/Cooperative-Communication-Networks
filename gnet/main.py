@@ -11,16 +11,18 @@ import matplotlib.pyplot as plt
 
 from cfg import get_config; CFG = get_config()
 from graph_match import minimum_loss_permutation
-from vision import Perceptor, perceptual_loss, make_symbol_data
+from vision import Perceptor, perceptual_loss, make_symbol_data, color_composite
 from graph_data import get_dataset
 from ml_utils import dense_regularization, update_data_dict, normalize_data_dict
-from models import get_model, get_optim, run_dummy_batch, load_weights, save_weights
+from models import get_model, get_optim, get_spy_optim, run_dummy_batch, load_weights, save_weights
 from upload import gs_upload_blob_from_memory, gs_upload_blob_from_string
+
+# why doesn't it learn to use all of the color channels?
+# seems like it would be useful...
 
 strategy = None
 
 if CFG['TPU']:
-  # setup strategy
   TPU_WORKER = 'grpc://' + os.environ['COLAB_TPU_ADDR']
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=TPU_WORKER)
   tf.config.experimental_connect_to_cluster(resolver)
@@ -31,8 +33,6 @@ else:
 
 num_replicas = strategy.num_replicas_in_sync
 print("REPLICAS: ", num_replicas)
-
-# in colab, changed: distribute/tpu_strategy.py np.rank to np.ndim
 
 
 # Hyperparameters to explore:
@@ -72,9 +72,11 @@ def get_batch(start_b, end_b, adj, node_features, adj_labels, nf_labels,
 
 def get_visual_samples(test_ds, model, test_num_samples, difficulty):
   sample_idxs = tf.random.uniform([CFG['batch_size']], 0, test_num_samples, tf.int32)
+  spy_imgs = None
   if CFG['JUST_VISION']:
     vis_batch = tf.gather(test_ds, sample_idxs)
     _, sample_imgs, aug_imgs = model(vis_batch, difficulty)
+    _, spy_imgs, _ = model(vis_batch, difficulty, spy_turn=True)
   else:
     vis_batch = {
       'adj': tf.gather(test_ds['adj'], sample_idxs),
@@ -86,44 +88,66 @@ def get_visual_samples(test_ds, model, test_num_samples, difficulty):
       'num_nodes': tf.gather(test_ds['num_nodes'], sample_idxs),
     }
     _, _, sample_imgs, aug_imgs, _, _ = model(vis_batch, difficulty)
+    _, _, spy_imgs, _, _, _ = model(vis_batch, difficulty, spy_turn=True)
   # scale tanh to visual range
   sample_imgs = (sample_imgs + 1) / 2
   aug_imgs = (aug_imgs + 1) / 2
-  return sample_imgs, aug_imgs
+  spy_imgs = (spy_imgs + 1) / 2
+  return sample_imgs, aug_imgs, spy_imgs
+
 
 def main():
-  # TODO: metrics with states? including loss and accuracy...
-  # TODO: regex for experiments
   print(f"Using strategy: {strategy}")
   with strategy.scope():
     def vision_only_predict(model, batch, difficulty, perceptor):
-      reg_loss = {}
+      all_losses = {}
       symbols = batch
       predictions, imgs, aug_imgs = model(symbols, difficulty)
       acc = tf.keras.metrics.categorical_accuracy(symbols, predictions)
       acc = tf.math.reduce_mean(acc)
       acc = {'symbols': acc}
-      batch_loss = tf.keras.losses.categorical_crossentropy(
+      recon_loss = tf.keras.losses.mean_squared_error(
         symbols,
         predictions,
-        label_smoothing=CFG['label_smoothing']
+        # label_smoothing=CFG['label_smoothing']
       )
-      batch_loss = tf.math.reduce_sum(batch_loss)
+      recon_loss = tf.math.reduce_sum(recon_loss)
+      all_losses['reconstruction'] = recon_loss
       if CFG['use_perceptual_loss']:
         features = perceptor(imgs)
         percept_loss = perceptual_loss(features)
-        reg_loss['perceptual'] = percept_loss
-      # add regularization losses to batch loss
+        all_losses['perceptual'] = percept_loss
+      if CFG['use_spy']:
+        # Wassertein-ish loss function
+        predictions_s, imgs_s, aug_imgs_s = model(symbols, difficulty, spy_turn=True)
+        acc_s = tf.keras.metrics.categorical_accuracy(symbols, predictions_s)
+        acc_s = tf.math.reduce_mean(acc_s)
+        acc['spy_symbols'] = acc_s
+        spy_loss = tf.keras.losses.mean_squared_error(
+          symbols,
+          predictions_s,
+          # label_smoothing=CFG['label_smoothing']
+        )
+        spy_loss = tf.math.reduce_sum(spy_loss)
+
+      # get reg loss
       for sub_model in model.layers:
         name = sub_model.name
-        reg_loss[name] = tf.math.reduce_sum(sub_model.losses)
-      # add regularization losses to batch loss
-      for reg_name in reg_loss.keys():
-        batch_loss += reg_loss[reg_name]
-      return batch_loss, acc, reg_loss
+        all_losses[name] = tf.math.reduce_sum(sub_model.losses)
 
+      # get loss sum
+      loss_sum = 0.
+      for loss_name in all_losses.keys():
+        loss_sum += all_losses[loss_name]
+      if CFG['use_spy']:
+        all_losses['spy_reconstruction'] = spy_loss
+        loss_sum += all_losses['spy_reconstruction'] * -1.
+      return loss_sum, acc, all_losses
+
+    
 
     def graph_or_full_predict(model, batch, difficulty, perceptor):
+      # TODO: update to match vision
       reg_loss = {}
       if CFG['VISION']:
         adj_pred, nf_pred, imgs, aug_imgs, _, _ = model(batch, difficulty)
@@ -139,6 +163,7 @@ def main():
         adj_pred,
         nf_pred
       )
+      # get reg loss
       for sub_model in model.layers:
         name = sub_model.name
         reg_loss[name] = tf.math.reduce_sum(sub_model.losses)
@@ -159,26 +184,26 @@ def main():
     @tf.function
     def train_step(batch, difficulty):
       with tf.GradientTape(persistent=True) as tape:
-        batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
-      grads = tape.gradient(batch_loss, model.trainable_variables)
+        loss_sum, acc, all_losses = predict(model, batch, difficulty, perceptor)
+      # good guy loss
+      grads = tape.gradient(loss_sum, model.trainable_variables)
       if CFG['TPU']:
         replica_ctx = tf.distribute.get_replica_context()
         grads = replica_ctx.all_reduce("mean", grads)
-        # batch_loss = replica_ctx.all_reduce("mean", batch_loss)
-        # acc = replica_ctx.all_reduce("mean", acc)
-        # reg_loss = replica_ctx.all_reduce("mean", reg_loss)
       optim.apply_gradients(zip(grads, model.trainable_variables))
-      return batch_loss, acc, reg_loss
+      if CFG['use_spy']:
+        # spy loss
+        spy_grads = tape.gradient(all_losses['spy_reconstruction'], model.spy.trainable_variables)
+        if CFG['TPU']:
+          replica_ctx = tf.distribute.get_replica_context()
+          spy_grads = replica_ctx.all_reduce("mean", spy_grads)
+        spy_optim.apply_gradients(zip(spy_grads, model.spy.trainable_variables))
+      return loss_sum, acc, all_losses
 
 
     @tf.function
     def test_step(batch, difficulty):
       batch_loss, acc, reg_loss = predict(model, batch, difficulty, perceptor)
-      # if CFG['TPU']:
-      #   replica_ctx = tf.distribute.get_replica_context()
-      #   batch_loss = replica_ctx.all_reduce("mean", batch_loss)
-      #   acc = replica_ctx.all_reduce("mean", acc)
-      #   reg_loss = replica_ctx.all_reduce("mean", reg_loss)
       return batch_loss, acc, reg_loss
 
 
@@ -194,7 +219,7 @@ def main():
       return batch_loss, out_acc, out_reg_loss
 
 
-    def step_fn(model, optim, batch, difficulty, perceptor, test=False):
+    def step_fn(batch, difficulty, test=False):
       if test:
         if CFG['TPU']:
           results = strategy.run(test_step, args=(batch, difficulty))
@@ -208,6 +233,7 @@ def main():
         else:
           return train_step(batch, difficulty)
 
+
     # ==================== DATA AND MODELS ====================
     if CFG['JUST_VISION']:
       train_ds, _ = make_symbol_data(**CFG, test=False)
@@ -219,18 +245,15 @@ def main():
     global_batch_size = strategy.num_replicas_in_sync * replica_batch_size
     tf_train_ds = tf.data.Dataset.from_tensor_slices(train_ds).batch(global_batch_size, drop_remainder=True)
     tf_test_ds = tf.data.Dataset.from_tensor_slices(test_ds).batch(global_batch_size, drop_remainder=True)
-    # try turning this off
-    # if CFG['TPU']:
-    #   tf_train_ds = strategy.experimental_distribute_dataset(tf_train_ds)
-    #   tf_test_ds = strategy.experimental_distribute_dataset(tf_test_ds)
 
     path_prefix = CFG['root_filepath']
     model = get_model()
     run_dummy_batch(model)
     load_weights(model, path_prefix)
     optim = get_optim()
-    # perceptor = Perceptor()
+    spy_optim = get_spy_optim()
     perceptor = None
+    # perceptor = Perceptor()
 
   # ==================== NOISY CHANNEL ====================
   difficulty = tf.convert_to_tensor(0)
@@ -264,7 +287,7 @@ def main():
     b_i = 0
     for train_batch in tf_train_ds:
       b_i += global_batch_size
-      batch_loss, batch_acc, batch_reg_loss = step_fn(model, optim, train_batch, difficulty, perceptor)
+      batch_loss, batch_acc, batch_reg_loss = step_fn(train_batch, difficulty)
       tr_epoch_loss += batch_loss
       update_data_dict(tr_epoch_acc, batch_acc)
       update_data_dict(reg_loss, batch_reg_loss)
@@ -273,7 +296,7 @@ def main():
     b_i = 0
     for test_batch in tf_test_ds:
       b_i += global_batch_size
-      batch_loss, batch_acc, batch_reg_loss = step_fn(model, optim, test_batch, difficulty, perceptor, test=True)
+      batch_loss, batch_acc, batch_reg_loss = step_fn(test_batch, difficulty, test=True)
       test_epoch_loss += batch_loss
       update_data_dict(test_epoch_acc, batch_acc)
       print(f"(TEST) e [{e_i}/{CFG['epochs']}] b [{b_i}/{test_num_samples}] loss {batch_loss}", end="\r")
@@ -290,11 +313,14 @@ def main():
     difficulty = update_difficulty(difficulty, tr_epoch_acc)
     print(f"DIFFICULTY FOR NEXT EPOCH: {difficulty}")
     # write metrics to log
+    # TODO: improve logging here and rename reg_loss dict, including tensor aggregation
     if not CFG['NOLOG']:
       with train_summary_writer.as_default():
         tf.summary.scalar('loss', tr_epoch_loss, step=e_i)
         for name, metric in tr_epoch_acc.items():
           tf.summary.scalar(name, metric, step=e_i)
+        for name, specific_loss in reg_loss.items():
+          tf.summary.scalar(name, specific_loss, step=e_i)
       with test_summary_writer.as_default():
         tf.summary.scalar('loss', test_epoch_loss, step=e_i)
         for name, metric in test_epoch_acc.items():
@@ -307,16 +333,15 @@ def main():
         save_weights(model, path_prefix)
     # GENERATE VISUAL SAMPLE
     if CFG['VISION'] and e_i % CFG['image_every'] == 0 and e_i != 0:
-      sample_imgs, aug_imgs = get_visual_samples(test_ds, model, test_num_samples, difficulty)
-      # debug printing to make sure none are all 0 or all 1 (vanishing gradient)
-      print(f"0: {tf.math.reduce_mean(sample_imgs[0])}")
-      print(f"1: {tf.math.reduce_mean(sample_imgs[1])}")
-      print(f"2: {tf.math.reduce_mean(sample_imgs[2])}")
-      print(f"3: {tf.math.reduce_mean(sample_imgs[3])}")
-      fig, axes = plt.subplots(2, 4)
+      sample_imgs, aug_imgs, spy_imgs = get_visual_samples(test_ds, model, test_num_samples, difficulty)
+      sample_imgs = color_composite(sample_imgs)
+      aug_imgs = color_composite(aug_imgs)
+      if CFG['use_spy']: spy_imgs = color_composite(spy_imgs)
+      fig, axes = plt.subplots(3, 4) if CFG['use_spy'] else plt.subplots(2, 4)
       for img_i in range(4):
         axes[0][img_i].imshow(sample_imgs[img_i])
         axes[1][img_i].imshow(aug_imgs[img_i])
+        if CFG['use_spy']: axes[2][img_i].imshow(spy_imgs[img_i])
       gallery_dir = f"gallery/{CFG['run_name']}"
       img_name = os.path.join(gallery_dir, f"{e_i}.png")
       img_data = io.BytesIO()
