@@ -57,6 +57,7 @@ def transform_batch(images,
     images.shape[2],
     "Images should be square")
   DIM = images.shape[1]
+  channels = images.shape[3]
   XDIM = DIM % 2
 
   rot = max_rot_deg * clipped_random()
@@ -88,12 +89,12 @@ def transform_batch(images,
   if experimental_tpu_efficiency:
     # This reduces excessive padding in the original tf.gather_nd op
     idx4 = idx3[:, 0] * DIM + idx3[:, 1]
-    images = tf.reshape(images, [batch_size, DIM * DIM, 3])
+    images = tf.reshape(images, [batch_size, DIM * DIM, channels])
     d = tf.gather(images, idx4, axis=1)
-    return tf.reshape(d, [batch_size,DIM,DIM,3])
+    return tf.reshape(d, [batch_size,DIM,DIM,channels])
   else:
     d = tf.gather_nd(images, batched_idx3, batch_dims=1)
-    return tf.reshape(d,[batch_size,DIM,DIM,3])
+    return tf.reshape(d,[batch_size,DIM,DIM,channels])
 
 
 if __name__ == "__main__":
