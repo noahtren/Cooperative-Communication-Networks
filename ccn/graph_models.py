@@ -177,7 +177,6 @@ class GraphEncoder(tf.keras.Model):
 
 
   def call(self, inputs, debug=False):
-    # TODO: implement debugging
     node_features = inputs['node_features']
     num_nodes = inputs['num_nodes']
     adj = inputs['adj']
