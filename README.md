@@ -4,7 +4,8 @@
 
 WIP code demonstrating Cooperative Communication Networks — generative systems
 that learn representations with no dataset. This project attempts to encode
-trees and graphs as images, making use of graph isomorphism.
+trees and graphs as images, making use of graph isomorphism to explore 
+generative notation systems.
 
 I'm working on a post to explain the project. For now, see [About This Project](#about-this-project)
 
