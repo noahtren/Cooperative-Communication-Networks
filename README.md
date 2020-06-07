@@ -65,7 +65,7 @@ issue.
 ## About This Project
 
 Rather than learning from data, CCNs are guided by a set of constraints that
-modulate or hinder communication. This includes (but is not limited to) the
+modulate and/or hinder communication. This includes (but is not limited to) the
 communication medium and channel. Adversarial agents may also be part of the
 system. Essentially, CCNs are autoencoders with latent spaces that can be shaped
 according to arbitrary constraints.
@@ -89,8 +89,7 @@ originally suggested calling these Cooperative Communication Networks.
 ### Disclaimer
 
 I am not a formal ML researcher (but I'd be interested in the opportunity),
-and I currently don't have any claims about the theoretical signifiance of this
-work.
+and I have no claims about the theoretical signifiance of this work.
 
 Regardless, I'm happy to share this code and respond to questions!
 
