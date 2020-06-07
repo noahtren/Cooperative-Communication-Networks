@@ -2,28 +2,38 @@
 
 # Cooperative Communication Networks
 
-WIP code of Cooperative Communication Networks — generative systems that learn
-representations with no dataset, guided by the constraints of the environment.
-CCNs are heavily inspired by information theory. They are essentially
-autoencoders with latent spaces that can be shaped according to different
-constraints.
+WIP code for Cooperative Communication Networks — generative systems that learn
+representations with no dataset. Rather, they are guided by the constraints of
+a given environment.
+
+CCNs are autoencoders with latent spaces that can be shaped according to
+arbitrary constraints. They may provide a platform to explore the expressive
+capabilities of neural networks without being influenced by training data.
+CCNs are heavily inspired by information theory.
 
 ## Usage
 
-To run this locally, run `python ccn/main.py`. A training session will begin
-according to the configuration set in `config.json`. By default, 4 snapshots
-are saved to the `gallery` folder at the end of every epoch.
+To run this locally, run `python ccn/main.py`. This will start trainig based on
+the config set in `config.json`. By default, a snapshot of 4 random samples is
+saved to the `gallery` folder at the end of every epoch.
+
+An example snapshot may look like this:
+
+![](/media/example_snapshot.png)
+
+You can see that the top row is the generated samples, and the bottom row is the
+samples after being passed through a noisy channel.
 
 ## Config
 
 The configuration can be modified to run experiments. Three different
-experiment types can be run, each with their own configuration.
+experiment types can be run.
 
-`JUST_VISION` trains a CNN autoencoder to produce unique images, with a vocab
+`JUST_VISION` trains a CNN autoencoder to produce unique symbols, with a vocab
 size equal to `NUM_SYMBOLS`.
 
 `JUST_GRAPH` trains a graph autoencoder, which is run to pretrain the graph
-autoencoder portion of the full pipeline. Currently encodes arithmetic syntax
+autoencoder portion of the full pipeline. It encodes arithmetic syntax
 trees as defined in `graph_data.py` 
 
 `FULL` trains a CNN autoencoder nested inside of a graph autoencoder, which is
@@ -70,4 +80,4 @@ I am not a formal ML researcher, and I currently don't have any claims about the
 theoretical signifiance of this work. However, I'm happy to share this code and
 respond to questions!
 
-The code is MIT-licensed. Do with it what you'd like.
+The code is MIT-licensed.
