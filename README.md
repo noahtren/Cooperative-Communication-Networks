@@ -2,20 +2,19 @@
 
 # Cooperative Communication Networks
 
-WIP code for Cooperative Communication Networks — generative systems that learn
-representations with no dataset. Rather, they are guided by the constraints of
-a given environment.
-
-CCNs are autoencoders with latent spaces that can be shaped according to
-arbitrary constraints. They may provide a platform to explore the expressive
-capabilities of neural networks without being influenced by training data.
-CCNs are heavily inspired by information theory.
+WIP code demonstrating Cooperative Communication Networks — generative systems
+that learn representations with no dataset. Rather than learning from data, CCNs
+are  guided by the constraints of a given environment. CCNs are autoencoders
+with latent spaces that can be shaped according to arbitrary constraints.
 
 ## Usage
 
-To run this locally, run `python ccn/main.py`. This will start trainig based on
-the config set in `config.json`. By default, a snapshot of 4 random samples is
-saved to the `gallery` folder at the end of every epoch.
+You can run this locally by cloning the repo and installing the project as a
+Python package with `pip install -e .` in the project directory.
+
+`python ccn/main.py`. This will start training based on the config set in
+`config.json`. By default, a snapshot of 4 random samples is saved to the
+`gallery` folder at the end of every epoch.
 
 An example snapshot may look like this:
 
@@ -66,18 +65,22 @@ issue.
 
 Below are some ideas for future work.
 
-* Adversarial games. I'm working on adding a "Spy" generator that attempts to
-learn the same representations as the original generator and thus trick the
-decoder. Training would be similar to a GAN, but the dataset is replaced with a 
-collaborative generator model.
+* **Adversarial games**. I'm working on adding a "Spy" generator that attempts to
+learn the same representations as the original generator and is trained to
+trick the decoder. Training would be similar to a GAN, but the dataset is
+replaced with a collaborative generator.
 
-* Perceptual loss. Encouraging symbols to be perceptually different from each
-other via some external metric, such as a pre-trained CNN.
+* **Perceptual loss**. Implementing perceptual loss could encourage symbols to be
+perceptually different from each other via some external metric, such as a
+pre-trained CNN or something like [SimCLR](https://arxiv.org/abs/2002.05709).
 
 ## Disclaimer
 
 I am not a formal ML researcher, and I currently don't have any claims about the
-theoretical signifiance of this work. However, I'm happy to share this code and
-respond to questions!
+theoretical signifiance of this work. It is built off of work from
+[Joel Simon](http://www.joelsimon.net/tablets.html) and
+
+
+Regardless, I'm happy to share this code and respond to questions!
 
 The code is MIT-licensed.
