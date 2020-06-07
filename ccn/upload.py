@@ -8,7 +8,7 @@ import code
 import boto3
 from google.cloud import storage
 
-from cfg import get_config; CFG = get_config()
+from ccn.cfg import get_config; CFG = get_config()
 
 S3_BUCKET_NAME = CFG['s3_bucket']
 GS_BUCKET_NAME = CFG['gs_bucket']
@@ -79,4 +79,10 @@ if __name__ == "__main__":
       with open(os.path.join(code_path, file), 'r') as f:
         py_code = f.read()
       print(f"Uploading {file}")
-      s3_upload_data(f"code/{file}", py_code)
+      s3_upload_data(f"ccn/{file}", py_code)
+  # upload setup.py
+  file = '../setup.py'
+  with open(os.path.join(code_path, file), 'r') as f:
+    py_code = f.read()
+  print("Uploading setup.py")
+  s3_upload_data("setup.py", py_code)

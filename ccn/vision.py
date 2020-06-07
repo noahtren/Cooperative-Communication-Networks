@@ -3,8 +3,8 @@ import code
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from ml_utils import dense_regularization, cnn_regularization
-from cfg import get_config; CFG = get_config()
+from ccn.ml_utils import dense_regularization, cnn_regularization
+from ccn.cfg import get_config; CFG = get_config()
 
 
 def get_coord_ints(y_dim, x_dim):

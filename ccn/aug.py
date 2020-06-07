@@ -6,9 +6,9 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 
-from .cfg import get_config; CFG = get_config()
-from .ml_utils import gaussian_k
-import .experimental_aug
+from ccn.cfg import get_config; CFG = get_config()
+from ccn.ml_utils import gaussian_k
+from ccn.experimental_aug import transform_batch
 
 
 class DifferentiableAugment:
@@ -241,7 +241,7 @@ class DifferentiableAugment:
     max_shear_deg = tf.gather(DEGREES, DIFFICULTY) / 2.
     max_zoom_diff_pct = tf.gather(RESIZE_SCALES, DIFFICULTY)
     max_shift_pct = tf.gather(SHIFT_PERCENTS, DIFFICULTY)
-    return experimental_aug.transform_batch(
+    return transform_batch(
       imgs,
       max_rot_deg,
       max_shear_deg,

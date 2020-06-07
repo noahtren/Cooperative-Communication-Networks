@@ -6,7 +6,7 @@ import os
 
 import tensorflow as tf
 
-from .cfg import get_config; CFG = get_config()
+from ccn.cfg import get_config; CFG = get_config()
 
 
 def shuffle_together(*tensors):

@@ -14,7 +14,7 @@ def validate_cfg(CFG):
   if CFG['vision_model'] == 'conv':
     assert CFG['x_dim'] == CFG['y_dim']
   if 'composite_colors' in CFG:
-    assert CFG['c_out'] == len(CFG['composite_colors'])
+    assert CFG['c_out'] <= len(CFG['composite_colors'])
 
 
 def populate_cfg(CFG):

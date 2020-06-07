@@ -9,13 +9,13 @@ import tensorflow as tf
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from .cfg import get_config; CFG = get_config()
-from .graph_match import minimum_loss_permutation
-from .vision import Perceptor, perceptual_loss, make_symbol_data, color_composite
-from .graph_data import get_dataset
-from .ml_utils import dense_regularization, update_data_dict, normalize_data_dict
-from .models import get_model, get_optim, get_spy_optim, run_dummy_batch, load_weights, save_weights
-from .upload import gs_upload_blob_from_memory, gs_upload_blob_from_string
+from ccn.cfg import get_config; CFG = get_config()
+from ccn.graph_match import minimum_loss_permutation
+from ccn.vision import Perceptor, perceptual_loss, make_symbol_data, color_composite
+from ccn.graph_data import get_dataset
+from ccn.ml_utils import dense_regularization, update_data_dict, normalize_data_dict
+from ccn.models import get_model, get_optim, get_spy_optim, run_dummy_batch, load_weights, save_weights
+from ccn.upload import gs_upload_blob_from_memory, gs_upload_blob_from_string
 
 strategy = None
 
@@ -260,7 +260,7 @@ def main():
   CFG['current_time'] = current_time
   cfg_dir = os.path.join(log_dir, 'config.json')
   if CFG['USE_GS']:
-    gs_upload_blob_from_string(json.dumps(CFG, indent=4), upload_config_dir, print_str=True)
+    gs_upload_blob_from_string(json.dumps(CFG, indent=4), cfg_dir, print_str=True)
   else:
     with open(cfg_dir, 'w+') as f:
       f.write(json.dumps(CFG, indent=4))

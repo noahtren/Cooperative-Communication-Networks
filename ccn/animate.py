@@ -20,11 +20,11 @@ import imageio
 from tqdm import tqdm
 
 # load config from cloud
-from cfg import read_config, read_config_from_string, set_config
-from upload import gs_download_blob_as_string
+from ccn.cfg import read_config, read_config_from_string, set_config
+from ccn.upload import gs_download_blob_as_string
 
 
-run_name = 'cloud_full_test'
+run_name = 'cloud_wasstertein_full_loss'
 
 
 def get_loaded_model_config(run_name=None):
@@ -41,11 +41,11 @@ def get_loaded_model_config(run_name=None):
 CFG = get_loaded_model_config(run_name)
 set_config(CFG)
 
-from vision import color_composite
-from models import get_model, get_optim, run_dummy_batch, load_weights, \
+from ccn.vision import color_composite
+from ccn.models import get_model, get_optim, run_dummy_batch, load_weights, \
   save_weights
-from ml_utils import gaussian_k
-from graph_data import TensorGraph, label_data
+from ccn.ml_utils import gaussian_k
+from ccn.graph_data import TensorGraph, label_data
 
 
 def make_sliding_window_symbols(points:List[int], steps_between:int):
@@ -61,7 +61,7 @@ def make_sliding_window_symbols(points:List[int], steps_between:int):
     pt_1 = points[i]
     pt_2 = points[i + 1]
     for step in range(steps_between):
-      ratio = 1 - (step / (steps_between))
+      ratio = 1 - math.sin((step / (steps_between)) * math.pi / 2)
       val = np.zeros((CFG['NUM_SYMBOLS'],), dtype=np.float32)
       val[pt_1] = ratio
       val[pt_2] = 1 - ratio
@@ -138,6 +138,7 @@ def get_tree_results(steps_between:int,
   for state in tqdm(states):
     img = model.generator(tf.expand_dims(state, 0))
     if 'composite_colors' in CFG:
+      out_img = (out_img + 1) / 2. # scale to visual range
       out_img = color_composite(out_img)
     imgs.append(img[0])
   imgs = tf.stack(imgs, axis=0)
@@ -229,25 +230,31 @@ def blur(imgs):
   return imgs
 
 
-def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=None):
+def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=None, spy_imgs=None):
   """Texts is a list of strings equal to the number of imgs
   """
   assert len(texts) == len(imgs)
 
   writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
   for i, img in tqdm(enumerate(imgs)):
-    img = (img + 1) / 2.
-    img = tf.cast(img * 255, tf.uint8)
-    img = tf.image.resize(img, [int(img.shape[0] / scale_down),
-                                int(img.shape[1] / scale_down)],
-                                'lanczos3',
-                                antialias=True)
-    if circle_crop:
-      img = circle_crop(img)
-    if do_blur:
-      img = blur(img)[0]
-    if texts is not None:
-      img = annotate_image(img, texts[i])
+    def process_img(img):
+      img = (img + 1) / 2.
+      img = tf.cast(img * 255, tf.uint8)
+      img = tf.image.resize(img, [int(img.shape[0] / scale_down),
+                                  int(img.shape[1] / scale_down)],
+                                  'lanczos3',
+                                  antialias=True)
+      if circle_crop:
+        img = circle_crop(img)
+      if do_blur:
+        img = blur(img)[0]
+      if texts is not None:
+        img = annotate_image(img, texts[i])
+      return img
+    img = process_img(img)
+    if CFG['use_spy']:
+      spy_img = process_img(spy_imgs[i])
+      img = tf.concat([img, spy_img], axis=1)
     writer.append_data(np.array(img))
   writer.close()
 
@@ -264,14 +271,21 @@ if __name__ == "__main__":
   if CFG['JUST_VISION']:
     symbols, texts = make_sliding_window_symbols([0,1,2,3,4,5,6,7,8,9,0], 20)
     imgs = []
+    spy_imgs = [] if CFG['use_spy'] else None
     difficulty = tf.convert_to_tensor(1)
     for symbol in tqdm(symbols):
       symbol = tf.expand_dims(symbol, 0)
       predictions, out_img, aug_img = model(symbol, difficulty)
       if 'composite_colors' in CFG:
+        out_img = (out_img + 1) / 2. # scale to visual range
         out_img = color_composite(out_img)
       imgs.append(out_img[0])
-    write_images(imgs, texts=texts)
+      if CFG['use_spy']:
+        _, spy_img, _ = model(symbol, difficulty, spy_turn=True)
+        spy_img = (spy_img + 1) / 2. # scale to visual range
+        spy_img = color_composite(spy_img)
+        spy_imgs.append(spy_img[0])
+    write_images(imgs, texts=texts, spy_imgs=spy_imgs)
 
   elif CFG['FULL']:
     adj_lists = [

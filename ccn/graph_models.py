@@ -4,7 +4,7 @@ import code
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from .ml_utils import dense_regularization
+from ccn.ml_utils import dense_regularization
 
 
 # TODO: consider adding auxiliary "certainty" prediction when using

@@ -3,13 +3,13 @@ import code
 
 import tensorflow as tf
 
-from .cfg import get_config; CFG = get_config()
-from .vision import Generator, Decoder, Spy, make_symbol_data
-from .graph_models import GraphEncoder, GraphDecoder
-from .aug import get_noisy_channel
-from .graph_data import get_dataset
-from .adamlrm import AdamLRM
-from .upload import gs_folder_exists
+from ccn.cfg import get_config; CFG = get_config()
+from ccn.vision import Generator, Decoder, Spy, make_symbol_data
+from ccn.graph_models import GraphEncoder, GraphDecoder
+from ccn.aug import get_noisy_channel
+from ccn.graph_data import get_dataset
+from ccn.adamlrm import AdamLRM
+from ccn.upload import gs_folder_exists
 
 
 def print_model_prefixes(model):
