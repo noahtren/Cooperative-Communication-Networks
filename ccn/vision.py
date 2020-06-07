@@ -481,10 +481,11 @@ def hex_to_rgb(hex_str):
 
 def color_composite(imgs):
   out_channels = tf.zeros(imgs.shape[:3] + [3])
-  for i, hex_str in enumerate(CFG["composite_colors"]):
+  for channel_i in range(imgs.shape[3]):
+    hex_str = CFG['composite_colors'][channel_i]
     rgb = tf.convert_to_tensor(hex_to_rgb(hex_str))
     rgb = tf.cast(rgb, tf.float32) / 255.
-    composite_channel = imgs[..., i, tf.newaxis] * rgb
+    composite_channel = imgs[..., channel_i, tf.newaxis] * rgb
     out_channels += composite_channel
   return out_channels
 
