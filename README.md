@@ -66,12 +66,12 @@ issue.
 
 ![Cooperative Communication Networks](/media/ccn.png)
 
-Rather than learning from data, CCNs learn to communicate messages. They are
-guided by a set of constraints that modulate and/or hinder communication. This
-includes (but is not limited to) the communication medium and channel.
-Adversarial agents may also be part of the system. Essentially, CCNs are
-autoencoders with latent spaces that can be shaped according to arbitrary
-constraints.
+Rather than learning from data, CCNs learn to communicate messages from scrath.
+They are guided by a set of constraints that modulate and/or hinder
+communication. This includes (but is not limited to) the communication medium
+and channel. Adversarial agents may also be part of the system. Essentially,
+CCNs are autoencoders with latent spaces that can be shaped according to
+arbitrary constraints.
 
 ### Current/Future Work
 
