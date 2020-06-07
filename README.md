@@ -3,16 +3,16 @@
 # Cooperative Communication Networks
 
 WIP code demonstrating Cooperative Communication Networks — generative systems
-that learn representations with no dataset. Rather than learning from data, CCNs
-are  guided by the constraints of a given environment. CCNs are autoencoders
-with latent spaces that can be shaped according to arbitrary constraints.
+that learn representations with no dataset.
+
+There is no paper. For more info, see [About This Project](##-About-This-Project)
 
 ## Usage
 
 You can run this locally by cloning the repo and installing the project as a
 Python package with `pip install -e .` in the project directory.
 
-`python ccn/main.py`. This will start training based on the config set in
+`python ccn/main.py` will start training based on the config set in
 `config.json`. By default, a snapshot of 4 random samples is saved to the
 `gallery` folder at the end of every epoch.
 
@@ -61,26 +61,39 @@ and passed through the autoencoder, and the latent space is visual.
 If you have any questions about the code or run into any issues, please open an
 issue.
 
-## Current/Future Work
 
-Below are some ideas for future work.
+## About This Project
 
-* **Adversarial games**. I'm working on adding a "Spy" generator that attempts to
-learn the same representations as the original generator and is trained to
-trick the decoder. Training would be similar to a GAN, but the dataset is
-replaced with a collaborative generator.
+Rather than learning from data, CCNs are guided by a set of constraints that
+modulate or hinder communication. This includes (but is not limited to) the
+communication medium and channel. Adversarial agents may also be part of the
+system. Essentially, CCNs are autoencoders with latent spaces that can be shaped
+according to arbitrary constraints.
+
+### Current/Future Work
+
+* **Adversarial games**. I'm working on adding a "Spy" generator that attempts
+to learn the same representations as the original generator. It would be trained
+to trick the decoder. Training would be similar to a GAN, but the dataset is
+replaced with a cooperative generator.
 
 * **Perceptual loss**. Implementing perceptual loss could encourage symbols to be
 perceptually different from each other via some external metric, such as a
 pre-trained CNN or something like [SimCLR](https://arxiv.org/abs/2002.05709).
 
-## Disclaimer
-
-I am not a formal ML researcher, and I currently don't have any claims about the
-theoretical signifiance of this work. It is built off of work from
+This is built off of work from
 [Joel Simon](http://www.joelsimon.net/tablets.html) and
+[Ryan Murdock](https://rynmurdock.github.io/2020/02/05/CCN.html). Ryan Murdock
+originally suggested calling these Cooperative Communication Networks.
 
+### Disclaimer
+
+I am not a formal ML researcher (but I'd be interested in the opportunity),
+and I currently don't have any claims about the theoretical signifiance of this
+work.
 
 Regardless, I'm happy to share this code and respond to questions!
+
+### License
 
 The code is MIT-licensed.
