@@ -5,7 +5,7 @@
 WIP code demonstrating Cooperative Communication Networks — generative systems
 that learn representations with no dataset.
 
-There is no paper. For more info, see [About This Project](##-About-This-Project)
+There is no paper. For more info, see [About This Project](##About-This-Project)
 
 ## Usage
 
