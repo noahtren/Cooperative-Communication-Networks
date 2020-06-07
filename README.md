@@ -74,21 +74,22 @@ and channel. Adversarial agents could also be part of the system. Essentially,
 CCNs are autoencoders with latent spaces that can be shaped according to
 arbitrary constraints.
 
-### Current/Future Work
+### Extensions
 
-* **Adversarial games**. I'm working on adding a "Spy" generator that attempts
+* **Adversarial games**. One could add a "Spy" generator that attempts
 to learn the same representations as the original generator. It would be trained
 to trick the decoder. This would be similar to a GAN, but the dataset is
 replaced with a cooperative generator.
 
 * **Perceptual loss**. Implementing perceptual loss could encourage symbols to be
 perceptually different from each other via some external metric, such as from a
-pre-trained CNN. [SimCLR](https://arxiv.org/abs/2002.05709) could be useful.
+pre-trained CNN.
 
 ### Credit
 
 [Joel Simon](https://www.joelsimon.net/) directly inspired my interest in this
 with [Dimensions of Dialogue](https://www.joelsimon.net/dimensions-of-dialogue.html).
+Joel also first had the idea of adversarial games.
 [Ryan Murdock](https://rynmurdock.github.io/2020/02/05/CCN.html) originally
 suggested calling these Cooperative Communication Networks, and also had the
 idea of perceptual loss.
