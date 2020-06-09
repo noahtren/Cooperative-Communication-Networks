@@ -94,11 +94,11 @@ def main():
       acc = tf.keras.metrics.categorical_accuracy(symbols, predictions)
       acc = tf.math.reduce_mean(acc)
       acc = {'symbols': acc}
-      recon_loss = tf.keras.losses.mean_squared_error(
+      lfn = tf.keras.losses.mean_squared_error if CFG['use_mse_loss'] else \
+        lambda true, pred: tf.keras.losses.categorical_crossentropy(true, pred, label_smoothing=CFG['label_smoothing'])
+      recon_loss = tf.keras.losses.categorical_crossentropy(
         symbols,
         predictions,
-        # uncomment if changing back to crossentropy loss
-        # label_smoothing=CFG['label_smoothing']
       )
       recon_loss = tf.math.reduce_sum(recon_loss)
       all_losses['reconstruction'] = recon_loss
@@ -112,10 +112,9 @@ def main():
         acc_s = tf.keras.metrics.categorical_accuracy(symbols, predictions_s)
         acc_s = tf.math.reduce_mean(acc_s)
         acc['spy_symbols'] = acc_s
-        spy_loss = tf.keras.losses.mean_squared_error(
+        spy_loss = lfn(
           symbols,
           predictions_s,
-          # label_smoothing=CFG['label_smoothing']
         )
         spy_loss = tf.math.reduce_sum(spy_loss)
 
@@ -130,7 +129,9 @@ def main():
         loss_sum += all_losses[loss_name]
       if CFG['use_spy']:
         all_losses['spy_reconstruction'] = spy_loss
-        loss_sum += all_losses['spy_reconstruction'] * -1.
+        # make logistic loss linear
+        all_losses['spy_scaled'] = tf.math.exp(spy_loss * -1)
+        loss_sum += all_losses['spy_scaled']
       return loss_sum, acc, all_losses
 
     
@@ -139,12 +140,14 @@ def main():
       all_losses = {}
       if CFG['VISION']:
         adj_pred, nf_pred, imgs, aug_imgs, _, _ = model(batch, difficulty)
+        spy_adj_pred, spy_nf_pred, _, _, _, _ = model(batch, difficulty, spy_turn=True)
         if CFG['use_perceptual_loss']:
           features = perceptor(imgs)
           percept_loss = perceptual_loss(features)
           all_losses['perceptual'] = percept_loss
       else:
         adj_pred, nf_pred = model(batch, difficulty)
+        spy_adj_pred, spy_nf_pred = model(batch, difficulty, spy_turn=True)
       recon_loss, acc = minimum_loss_permutation(
         batch['adj_labels'],
         batch['nf_labels'],
@@ -152,6 +155,15 @@ def main():
         nf_pred
       )
       all_losses['reconstruction'] = recon_loss
+
+      spy_loss, spy_acc = minimum_loss_permutation(
+        batch['adj_labels'],
+        batch['nf_labels'],
+        spy_adj_pred,
+        spy_nf_pred
+      )
+      for key in spy_acc.keys():
+        acc[f"spy_{key}"] = spy_acc[key]
 
       # get reg loss
       for sub_model in model.layers:
@@ -162,6 +174,12 @@ def main():
       loss_sum = 0.
       for loss_name in all_losses.keys():
         loss_sum += all_losses[loss_name]
+
+      if CFG['use_spy']:
+        all_losses['spy_reconstruction'] = spy_loss
+        # make logistic loss linear
+        all_losses['spy_scaled'] = tf.math.exp(spy_loss * -1)
+        loss_sum += all_losses['spy_scaled']
       return loss_sum, acc, all_losses
 
 
@@ -304,7 +322,7 @@ def main():
     print(f"EPOCH {e_i} TRAIN LOSS: {tr_epoch_loss} TEST LOSS: {test_epoch_loss}")
     print(f"Train accuracies: {json.dumps(tr_epoch_acc, indent=4)}")
     print(f"Test accuracies: {json.dumps(test_epoch_acc, indent=4)}")
-    print(f"Regularizer losses: {json.dumps(all_losses, indent=4)}")
+    print(f"All losses: {json.dumps(all_losses, indent=4)}")
     difficulty = update_difficulty(difficulty, tr_epoch_acc)
     print(f"DIFFICULTY FOR NEXT EPOCH: {difficulty}")
     # write metrics to log
