@@ -31,6 +31,58 @@ def generate_scaled_coordinate_hints(batch_size, y_dim, x_dim):
   return loc
 
 
+class ResidualBlock(tf.keras.layers.Layer):
+  """Vision processing block based on stacked hourglass network/resdiual block.
+  Uses full pre-activation from Identity Mappings in Deep Residual Networks.
+  ---
+  Identity Mappings in Deep Residual Networks
+  https://arxiv.org/pdf/1603.05027.pdf
+  ---
+  """
+  def __init__(self, filters:int):
+    super(ResidualBlock, self).__init__()
+    self.first_conv = tf.keras.layers.Conv2D(
+      filters // 4,
+      kernel_size=1,
+      strides=1,
+      padding='same',
+      **cnn_regularization
+    )
+    self.second_conv = tf.keras.layers.Conv2D(
+      filters // 4,
+      kernel_size=3,
+      strides=1,
+      padding='same',
+      **cnn_regularization
+    )
+    self.third_conv = tf.keras.layers.Conv2D(
+      filters,
+      kernel_size=1,
+      strides=1,
+      padding='same',
+      **cnn_regularization
+    )
+    self.batch_norms = [tf.keras.layers.BatchNormalization() for _ in range(3)]
+
+  def call(self, x):
+    start_x = x
+
+    x = self.batch_norms[0](x)
+    x = tf.nn.swish(x)
+    x = self.first_conv(x)
+
+    x = self.batch_norms[1](x)
+    x = tf.nn.swish(x)
+    x = self.second_conv(x)
+
+    x = self.batch_norms[2](x)
+    x = tf.nn.swish(x)
+    x = self.third_conv(x)
+
+    x = x + start_x
+    return x
+
+
 class CPPN(tf.keras.Model):
   """Compositional Pattern-Producing Network
   NOTE: unused currently, but available to experiment with
@@ -97,61 +149,49 @@ class ConvGenerator(tf.keras.Model):
     self.init_Z_embed = tf.keras.layers.Dense(vision_hidden_size, **dense_regularization)
     self.y_dim = y_dim
     self.x_dim = x_dim
-    self.upconvs = []
-    self.convs = []
-    self.one_convs = []
-    self.upconv_norms = []
-    self.one_conv_norms = []
-    self.conv_norms = []
+    self.res_preps = []
+    self.residual_blocks_1 = []
+    self.residual_blocks_2 = []
+    self.upsamples = []
     self.Z_embeds = []
     self.Z_norms = []
-    self.loc_convs = []
-    self.loc_norms = []
+    self.cond_convs = []
     for r in range(R):
       filters = vision_hidden_size // (2 ** (R-r))
       filters = max([filters, minimum_filters])
-      upconv = tf.keras.layers.Conv2DTranspose(
+      Z_filters = filters // 4 # spatial location channels
+      res_prep = tf.keras.layers.Conv2D(
+        filters,
+        kernel_size=1,
+        strides=1,
+        padding='same',
+        **cnn_regularization
+      )
+      residual_block_1 = ResidualBlock(filters)
+      residual_block_2 = ResidualBlock(filters)
+      upsample = tf.keras.layers.Conv2DTranspose(
         filters,
         kernel_size=3,
         strides=2,
         padding='same',
         **cnn_regularization
       )
-      one_conv = tf.keras.layers.Conv2D(
-        filters * 2,
-        kernel_size=1,
-        strides=1,
-        padding='same',
-        **cnn_regularization
-      )
-      conv = tf.keras.layers.Conv2D(
-        filters,
-        kernel_size=3,
-        strides=1,
-        padding='same',
-        **cnn_regularization
-      )
-      Z_filters = filters // 4
-      loc_conv = tf.keras.layers.Conv2D(
-        Z_filters,
-        kernel_size=1,
-        strides=1,
-        padding='same',
-        # no regularization because this takes raw pixel locations as inputs
-      )
       Z_embeds = [tf.keras.layers.Dense(256, **dense_regularization) for _ in range(Z_embed_num - 1)] + \
         [tf.keras.layers.Dense(Z_filters, **dense_regularization)]
-      Z_norms = [tf.keras.layers.LayerNormalization() for _ in range(Z_embed_num)]
-      self.upconvs = [upconv] + self.upconvs
-      self.one_convs = [one_conv] + self.one_convs
-      self.convs = [conv] + self.convs
+      Z_norms = [tf.keras.layers.BatchNormalization() for _ in range(Z_embed_num)]
+      cond_conv = tf.keras.layers.Conv2D(
+        filters,
+        kernel_size=1,
+        strides=1,
+        padding='same'
+      )
+      self.res_preps = [res_prep] + self.res_preps
+      self.residual_blocks_1 = [residual_block_1] + self.residual_blocks_1
+      self.residual_blocks_2 = [residual_block_2] + self.residual_blocks_2
+      self.upsamples = [upsample] + self.upsamples
       self.Z_embeds = [Z_embeds] + self.Z_embeds
       self.Z_norms = [Z_norms] + self.Z_norms
-      self.loc_convs = [loc_conv] + self.loc_convs
-      self.upconv_norms.append(tf.keras.layers.LayerNormalization())
-      self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
-      self.conv_norms.append(tf.keras.layers.LayerNormalization())
-      self.loc_norms.append(tf.keras.layers.LayerNormalization())
+      self.cond_convs = [cond_conv] + self.cond_convs
     self.out_conv = tf.keras.layers.Conv2D(
       c_out,
       kernel_size=1,
@@ -169,29 +209,23 @@ class ConvGenerator(tf.keras.Model):
     x = x[:, tf.newaxis, tf.newaxis]
     if debug: tf.print('GENERATOR')
     if debug: tf.print(x.shape)
-    for li, _ in enumerate(self.convs):
+    for li, _ in enumerate(self.Z_embeds):
       if debug: tf.print(x.shape)
-      upconv = self.upconvs[li]
-      upconv_norm = self.upconv_norms[li]
       Z_embeds = self.Z_embeds[li]
       Z_norms = self.Z_norms[li]
-      loc_conv = self.loc_convs[li]
-      loc_norm = self.loc_norms[li]
-      one_conv = self.one_convs[li]
-      one_conv_norm = self.one_conv_norms[li]
-      conv = self.convs[li]
-      conv_norm = self.conv_norms[li]
+      residual_block_1 = self.residual_blocks_1[li]
+      residual_block_2 = self.residual_blocks_2[li]
+      upsample = self.upsamples[li]
+      cond_conv = self.cond_convs[li]
+      res_prep = self.res_preps[li]
 
-      x = upconv(x)
-      x = upconv_norm(x)
-      x = tf.nn.dropout(x, 0.1)
-      x = tf.nn.swish(x)
+      x = upsample(x)
+      x = res_prep(x)
 
-      start_x = x
+      x = residual_block_1(x)
+
       y_dim, x_dim = x.shape[1], x.shape[2]
       loc = generate_scaled_coordinate_hints(batch_size, y_dim, x_dim)
-      loc = loc_conv(loc)
-      loc = loc_norm(loc)
       _z = Z
       for Z_embed, Z_norm in zip(Z_embeds, Z_norms):
         _z = Z_embed(_z)
@@ -203,16 +237,9 @@ class ConvGenerator(tf.keras.Model):
       if debug: tf.print(f"loc: {loc.shape}, z: {_z.shape}")
       x = tf.concat([x, loc, _z], axis=-1)
       if debug: tf.print(f"joined shape: {x.shape}")
+      x = cond_conv(x)
 
-      x = one_conv(x)
-      x = one_conv_norm(x)
-      x = tf.nn.swish(x)
-
-      x = conv(x)
-      x = conv_norm(x)
-      x = tf.nn.dropout(x, 0.1)
-      x = x + start_x
-      x = tf.nn.swish(x)
+      x = residual_block_2(x)
     
     if debug: tf.print(x.shape)
     x = self.out_conv(x)
@@ -234,42 +261,32 @@ class ConvDiscriminator(tf.keras.Model):
   def __init__(self, y_dim:int, x_dim:int, vision_hidden_size:int, R:int,
                c_out:int, NUM_SYMBOLS:int, minimum_filters:int, **kwargs):
     super(ConvDiscriminator, self).__init__()
-    self.downconvs = []
-    self.convs = []
-    self.one_convs = []
-    self.downconv_norms = []
-    self.one_conv_norms = []
-    self.conv_norms = []
+    self.res_preps = []
+    self.residual_blocks_1 = []
+    self.residual_blocks_2 = []
+    self.maxpools = []
     for r in range(R):
       filters = vision_hidden_size // (2 ** (R-r-1))
       filters = max([filters, minimum_filters])
-      downconv = tf.keras.layers.Conv2D(
+      res_prep = tf.keras.layers.Conv2D(
         filters,
-        kernel_size=3,
-        strides=2,
-        padding='same',
-        **cnn_regularization
-      )
-      one_conv = tf.keras.layers.Conv2D(
-        filters * 2,
         kernel_size=1,
         strides=1,
         padding='same',
         **cnn_regularization
       )
-      conv = tf.keras.layers.Conv2D(
+      residual_block_1 = ResidualBlock(filters)
+      residual_block_2 = ResidualBlock(filters)
+      self.res_preps.append(res_prep)
+      self.residual_blocks_1.append(residual_block_1)
+      self.residual_blocks_2.append(residual_block_2)
+      self.maxpools.append(tf.keras.layers.Conv2D(
         filters,
         kernel_size=3,
-        strides=1,
+        strides=2,
         padding='same',
         **cnn_regularization
-      )
-      self.downconvs.append(downconv)
-      self.one_convs.append(one_conv)
-      self.convs.append(conv)
-      self.downconv_norms.append(tf.keras.layers.LayerNormalization())
-      self.one_conv_norms.append(tf.keras.layers.LayerNormalization())
-      self.conv_norms.append(tf.keras.layers.LayerNormalization())
+      ))
     self.out_conv = tf.keras.layers.Conv2D(
       vision_hidden_size,
       kernel_size=1,
@@ -282,30 +299,17 @@ class ConvDiscriminator(tf.keras.Model):
 
   def call(self, x, debug=False):
     if debug: tf.print('DECODER')
-    for li, _ in enumerate(self.convs):
-      downconv = self.downconvs[li]
-      downconv_norm = self.downconv_norms[li]
-      one_conv = self.one_convs[li]
-      one_conv_norm = self.one_conv_norms[li]
-      conv = self.convs[li]
-      conv_norm = self.conv_norms[li]
+    for li, _ in enumerate(self.maxpools):
       if debug: tf.print(x.shape)
-      x = downconv(x)
-      x = downconv_norm(x)
-      x = tf.nn.dropout(x, 0.1)
-      x = tf.nn.swish(x)
-      start_x = x
+      res_prep = self.res_preps[li]
+      residual_block_1 = self.residual_blocks_1[li]
+      residual_block_2 = self.residual_blocks_2[li]
+      maxpool = self.maxpools[li]
+      x = res_prep(x)
+      x = residual_block_1(x)
+      x = residual_block_2(x)
+      x = maxpool(x)
 
-      x = one_conv(x)
-      x = one_conv_norm(x)
-      x = tf.nn.swish(x)
-
-      x = conv(x)
-      x = conv_norm(x)
-      x = tf.nn.dropout(x, 0.1)
-      x = x + start_x
-      x = tf.nn.swish(x)
-    
     if debug: tf.print(x.shape)
     x = self.out_conv(x)
     x = self.gap(x)
