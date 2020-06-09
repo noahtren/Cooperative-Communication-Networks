@@ -4,7 +4,7 @@
 
 WIP code demonstrating Cooperative Communication Networks — generative systems
 that learn representations by transmitting and reconstructing small messages. This project attempts to encode
-trees and graphs as images, making use of graph isomorphism to explore 
+trees and graphs as images, to explore
 generative notation systems.
 
 See [About This Project](#about-this-project).
