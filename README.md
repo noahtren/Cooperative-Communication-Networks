@@ -67,7 +67,7 @@ issue.
 
 ![Cooperative Communication Networks](/media/ccn.png)
 
-Rather than learning from data, CCNs learn to communicate messages from scratch.
+Rather than learning from high-dimensional data such as images, CCNs learn to communicate messages from scratch.
 They are guided by a set of constraints that modulate and/or hinder
 communication. This includes (but is not limited to) the communication medium
 and channel. Adversarial agents could also be part of the system. Essentially,
