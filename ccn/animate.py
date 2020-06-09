@@ -24,8 +24,11 @@ from ccn.cfg import read_config, read_config_from_string, set_config
 from ccn.upload import gs_download_blob_as_string
 
 
-run_name = 'cloud_wasstertein_full_loss'
-
+run_name = 'cloud_graph_gan_color'
+animation_type = 'interpolation' # ['interpolation', 'mosaic']
+in_between_frames = 20
+if animation_type == 'mosaic': in_between_frames = 1
+use_cache = True
 
 def get_loaded_model_config(run_name=None):
   if run_name is None:
@@ -119,7 +122,7 @@ def get_tree_results(steps_between:int,
   for i in range(Z.shape[0] - 1):
     diff = Z[i + 1] - Z[i]
     for j in range(steps_between):
-      ratio = j / steps_between
+      ratio = math.sin((j / (steps_between)) * math.pi / 2)
       state = Z[i] + diff * ratio
       text = {
         'top': {
@@ -135,14 +138,24 @@ def get_tree_results(steps_between:int,
       texts.append(text)
   states = tf.stack(states, axis=0)
   imgs = []
+  spy_imgs = [] if CFG['use_spy'] else None
   for state in tqdm(states):
     img = model.generator(tf.expand_dims(state, 0))
+    spy_img = None
+    if CFG['use_spy']:
+      spy_img = model.spy(tf.expand_dims(state, 0))
     if 'composite_colors' in CFG:
-      out_img = (out_img + 1) / 2. # scale to visual range
-      out_img = color_composite(out_img)
+      img = (img + 1) / 2. # scale to visual range
+      img = color_composite(img)
+      if CFG['use_spy']:
+        spy_img = (spy_img + 1) / 2.
+        spy_img = color_composite(spy_img)
     imgs.append(img[0])
+    if CFG['use_spy']:
+      spy_imgs.append(spy_img[0])
   imgs = tf.stack(imgs, axis=0)
-  return states, imgs, texts # acc
+  if CFG['use_spy']: spy_imgs = tf.stack(spy_imgs, axis=0)
+  return states, imgs, spy_imgs, texts # acc
 
 
 def annotate_image(img, text, side_width=64):
@@ -230,7 +243,7 @@ def blur(imgs):
   return imgs
 
 
-def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=None, spy_imgs=None):
+def write_interpolation(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=None, spy_imgs=None):
   """Texts is a list of strings equal to the number of imgs
   """
   assert len(texts) == len(imgs)
@@ -238,7 +251,6 @@ def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=
   writer = imageio.get_writer(f"gallery/{CFG['load_name']}_animation.mp4", format='FFMPEG', fps=20)
   for i, img in tqdm(enumerate(imgs)):
     def process_img(img):
-      img = (img + 1) / 2.
       img = tf.cast(img * 255, tf.uint8)
       img = tf.image.resize(img, [int(img.shape[0] / scale_down),
                                   int(img.shape[1] / scale_down)],
@@ -259,17 +271,32 @@ def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=
   writer.close()
 
 
+def write_mosaic(imgs, spy_imgs):
+  imgs = tf.concat(imgs, axis=0)
+  spy_imgs = tf.concat(spy_imgs, axis=0)
+  out = tf.concat([imgs, spy_imgs], axis=1)
+  imageio.imwrite(f"gallery/{CFG['load_name']}_mosaic.png", out)
+
+
+def write_images(imgs, scale_down=1, circle_crop=False, do_blur=True, texts:str=None, spy_imgs=None):
+  if animation_type == 'interpolation':
+    write_interpolation(imgs, scale_down, circle_crop, do_blur, texts, spy_imgs)
+  elif animation_type == 'mosaic':
+    write_mosaic(imgs, spy_imgs)
+  else:
+    raise RuntimeError
+
 if __name__ == "__main__":
   """Currently (and probably always) all visualizations are made locally
   """
   path_prefix = CFG['root_filepath']
   model = get_model()
   run_dummy_batch(model)
-  load_weights(model, path_prefix, use_cache=True)
+  load_weights(model, path_prefix, use_cache=use_cache)
   optim = get_optim()
   
   if CFG['JUST_VISION']:
-    symbols, texts = make_sliding_window_symbols([0,1,2,3,4,5,6,7,8,9,0], 20)
+    symbols, texts = make_sliding_window_symbols([0,1,2,3,4,5,6,7,8,9,0], in_between_frames)
     imgs = []
     spy_imgs = [] if CFG['use_spy'] else None
     difficulty = tf.convert_to_tensor(1)
@@ -298,9 +325,9 @@ if __name__ == "__main__":
       [[], [], [0, 1]],
       [[], [], [0, 1]],
 
-      [[], [], [0, 1]],
-      [[], [], [0, 1]],
-      [[], [], [0, 1]],
+      [[], [], [], [0, 1, 2]],
+      [[], [], [], [0, 1], [2, 3]],
+      [[], [], [], [0, 2], [1, 3]],
 
       [[], [], [0, 1]],
       [[], [], [0, 1]],
@@ -318,13 +345,13 @@ if __name__ == "__main__":
       ['a', 'b', '-'],
       ['a', 'b', '-'],
 
+      ['a', 'b', 'c', '+'],
+      ['a', 'b', 'c', '+', '*'],
+      ['a', 'b', 'c', '+', '*'],
+
       ['c', 'd', '*'],
       ['c', 'd', '-'],
       ['c', 'd', '-'],
-
-      ['b', 'd', '*'],
-      ['b', 'd', '-'],
-      ['b', 'd', '-'],
 
       ['a'],
     ]
@@ -339,9 +366,9 @@ if __name__ == "__main__":
       [0, 1, -1],
       [1, 0, -1],
 
-      [-1, -1, -1],
-      [0, 1, -1],
-      [1, 0, -1],
+      [-1, -1, -1, -1],
+      [-1, -1, -1, -1, -1],
+      [-1, -1, -1, -1, -1],
 
       [-1, -1, -1],
       [0, 1, -1],
@@ -352,13 +379,13 @@ if __name__ == "__main__":
     token_strings = [
       'a', 'b', 'c', 'd',
       'a+b', 'a-b', 'b-a',
-      'c+d', 'c-d', 'd-c',
-      'b+d', 'b-d', 'd-b',
+      'a+b+c', '(a+b)*c', '(a+c)*b',
+      'c+d', 'c-d', 'c-b',
       'a'
     ]
-    states, imgs, texts = get_tree_results(
-      40, model, adj_lists, value_tokens_lists, order_lists, token_strings
+    states, imgs, spy_imgs, texts = get_tree_results(
+      in_between_frames, model, adj_lists, value_tokens_lists, order_lists, token_strings
     )
-    write_images(imgs, scale_down=1, texts=texts)
+    write_images(imgs, scale_down=1, texts=texts, spy_imgs=spy_imgs)
   else:
     assert RuntimeError(f"Nothing to animate for a model ({CFG['run_name']}) that is graph only!")
