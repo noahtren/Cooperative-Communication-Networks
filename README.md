@@ -3,11 +3,11 @@
 # Cooperative Communication Networks
 
 WIP code demonstrating Cooperative Communication Networks — generative systems
-that learn representations with no dataset. This project attempts to encode
+that learn representations by transmitting and reconstructing small messages. This project attempts to encode
 trees and graphs as images, making use of graph isomorphism to explore 
 generative notation systems.
 
-I'm working on a post to explain the project. For now, see [About This Project](#about-this-project)
+See [About This Project](#about-this-project).
 
 ## Usage
 
@@ -67,7 +67,7 @@ issue.
 
 ![Cooperative Communication Networks](/media/ccn.png)
 
-Rather than learning from high-dimensional data such as images, CCNs learn to communicate messages from scratch.
+Rather than learning from high-dimensional data such as images, CCNs learn to communicate messages more or less from scratch.
 They are guided by a set of constraints that modulate and/or hinder
 communication. This includes (but is not limited to) the communication medium
 and channel. Adversarial agents could also be part of the system. Essentially,
