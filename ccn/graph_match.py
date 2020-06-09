@@ -28,13 +28,13 @@ def loss_fn(adj, nf, possible_adjs, possible_nfs):
   permute_dim = possible_adjs.shape[1]
 
   # calculate losses along last axis (per node)
-  lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
+  lfn = tf.keras.losses.mean_squared_error if CFG['use_mse_loss'] else \
     lambda true, pred: tf.keras.losses.binary_crossentropy(true, pred, label_smoothing=CFG['label_smoothing'])
 
   adj_label = tf.tile(adj[:, tf.newaxis], [1, permute_dim, 1, 1])
   loss = lfn(adj_label, possible_adjs)
 
-  lfn = tf.keras.losses.mean_squared_error if CFG['mse_loss_only'] else \
+  lfn = tf.keras.losses.mean_squared_error if CFG['use_mse_loss'] else \
     lambda true, pred: tf.keras.losses.categorical_crossentropy(true, pred, label_smoothing=CFG['label_smoothing'])
   for name, pred_nf in possible_nfs.items():
     nf_label = tf.tile(nf[name][:, tf.newaxis], [1, permute_dim, 1, 1])
