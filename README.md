@@ -7,8 +7,6 @@ that learn representations by transmitting and reconstructing small messages. Th
 trees and graphs as images, to explore
 generative notation systems.
 
-See [About This Project](#about-this-project).
-
 ## Usage
 
 You can run this locally by cloning the repo and installing the project as a
@@ -35,7 +33,7 @@ size equal to `NUM_SYMBOLS`.
 
 `JUST_GRAPH` trains a graph autoencoder, which is run to pretrain the graph
 autoencoder portion of the full pipeline. It encodes arithmetic syntax
-trees as defined in `graph_data.py` 
+trees as defined in `graph_data.py`
 
 `FULL` trains a CNN autoencoder nested inside of a graph autoencoder, which is
 the main demonstration of this project. Syntax trees can be expressed as graphs
@@ -57,7 +55,6 @@ and passed through the autoencoder, and the latent space is visual.
 
 ![](/media/cloud_6node_full_color_animation.gif)
 
-
 ## Contributing
 
 If you have any questions about the code or notice any problems, please open an
@@ -72,18 +69,18 @@ They are guided by a set of constraints that modulate and/or hinder
 communication. This includes (but is not limited to) the communication medium
 and channel. Adversarial agents could also be part of the system. Essentially,
 CCNs are autoencoders with latent spaces that can be shaped according to
-arbitrary constraints.
+arbitrary constraints. You can read more [here](https://noahtren.com/nn-language).
 
 ### Extensions
 
-* **Adversarial games**. One could add a "Spy" generator that attempts
-to learn the same representations as the original generator. It would be trained
-to trick the decoder. This would be similar to a GAN, but the dataset is
-replaced with a cooperative generator.
+- **Adversarial games**. One could add a "Spy" generator that attempts
+  to learn the same representations as the original generator. It would be trained
+  to trick the decoder. This would be similar to a GAN, but the dataset is
+  replaced with a cooperative generator.
 
-* **Perceptual loss**. Implementing perceptual loss could encourage symbols to be
-perceptually different from each other via some external metric, such as from a
-pre-trained CNN.
+- **Perceptual loss**. Implementing perceptual loss could encourage symbols to be
+  perceptually different from each other via some external metric, such as from a
+  pre-trained CNN.
 
 ### Credit
 
@@ -96,13 +93,6 @@ idea of perceptual loss.
 
 The new development here is encoding structured data (trees and graphs) and
 transforming it into visual representations.
-
-### Disclaimer
-
-I am not a formal ML researcher and I have no claims about the theoretical
-significance of this project.
-
-Regardless, I'm happy to share this code and respond to questions!
 
 ### License
 
